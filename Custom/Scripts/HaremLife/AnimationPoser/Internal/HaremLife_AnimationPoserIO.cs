@@ -139,7 +139,11 @@ namespace HaremLife
 				JSONArray layers = anim["Layers"].AsArray;
 				for(int m=0; m<layers.Count; m++)
 				{
+					Layer layerObj;
 					JSONClass layer = layers[m].AsObject;
+					myCurrentAnimation.myLayers.TryGetValue(layer["Layer"].AsObject["Name"], out layerObj);
+					SetLayer(layerObj);
+
 					LoadTransitions(layer);
 					LoadMessages(layer);
 				}
