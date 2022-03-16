@@ -1,4 +1,5 @@
 Internal/HaremLife_AnimationPoserCore.cs
-Internal/HaremLife_AnimationPoserUI.cs
+Internal/HaremLife_AnimationPoserIO.cs
 Internal/HaremLife_AnimationPoserDebug.cs
+Internal/HaremLife_AnimationPoserUI.cs
 Internal/HaremLife_Utils.cs

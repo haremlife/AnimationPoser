@@ -16,6 +16,7 @@ Licensed under CC BY-SA after EarlyAccess ended. (see https://creativecommons.or
 using UnityEngine;
 using UnityEngine.Events;
 using System;
+using System.Linq;
 using System.Collections.Generic;
 using SimpleJSON;
 
@@ -26,11 +27,7 @@ namespace HaremLife
 		private const int MAX_STATES = 4;
 		private static readonly int[] DISTANCE_SAMPLES = new int[] { 0, 0, 0, 11, 20};
 
-		private const int NUM_STATETYPES = 3;
-		private List<ControlCapture> myControlCaptures = new List<ControlCapture>();
-		private List<MorphCapture> myMorphCaptures = new List<MorphCapture>();
-
-		private const float DEFAULT_TRANSITION_DURATION = 0.1f;
+		private const float DEFAULT_TRANSITION_DURATION = 0.5f;
 		private const float DEFAULT_BLEND_DURATION = 0.2f;
 		private const float DEFAULT_EASEIN_DURATION = 0.0f;
 		private const float DEFAULT_EASEOUT_DURATION = 0.0f;
@@ -41,43 +38,29 @@ namespace HaremLife
 		private const float DEFAULT_ANCHOR_DAMPING_TIME = 0.2f;
 
 		private Dictionary<string, Animation> myAnimations = new Dictionary<string, Animation>();
-		private List<TriggerActionDiscrete> myTriggerActionsNeedingUpdate = new List<TriggerActionDiscrete>();
 		private static Animation myCurrentAnimation;
 		private static Layer myCurrentLayer;
 		private static State myCurrentState;
 
-		private float myClock = 0.0f;
-		private static bool myNoValidTransition = false;
 		private static bool myPlayMode = false;
 		private static bool myPaused = false;
 		private static bool myNeedRefresh = false;
 		private bool myWasLoading = true;
 
-		private static JSONStorableString mySwitchAnimation;
-		private static JSONStorableString mySwitchLayer;
-		private static JSONStorableString mySwitchState;
+		private static JSONStorableString mySendMessage;
 		private static JSONStorableString myLoadAnimation;
 		private static JSONStorableBool myPlayPaused;
 
 		public override void Init()
 		{
 			myWasLoading = true;
-			myClock = 0.0f;
 
 			InitUI();
 
 			// trigger values
-			mySwitchAnimation = new JSONStorableString("SwitchAnimation", "", SwitchAnimationAction);
-			mySwitchAnimation.isStorable = mySwitchAnimation.isRestorable = false;
-			RegisterString(mySwitchAnimation);
-
-			mySwitchLayer = new JSONStorableString("SwitchLayer", "", SwitchLayerAction);
-			mySwitchLayer.isStorable = mySwitchLayer.isRestorable = false;
-			RegisterString(mySwitchLayer);
-
-			mySwitchState = new JSONStorableString("SwitchState", "", SwitchStateAction);
-			mySwitchState.isStorable = mySwitchState.isRestorable = false;
-			RegisterString(mySwitchState);
+			mySendMessage = new JSONStorableString("SendMessage", "", ReceiveMessage);
+			mySendMessage.isStorable = mySendMessage.isRestorable = false;
+			RegisterString(mySendMessage);
 
 			myPlayPaused = new JSONStorableBool("PlayPause", false, PlayPauseAction);
 			myPlayPaused.isStorable = myPlayPaused.isRestorable = false;
@@ -102,6 +85,60 @@ namespace HaremLife
 			}
 		}
 
+		public override JSONClass GetJSON(bool includePhysical = true, bool includeAppearance = true, bool forceStore = false)
+		{
+			JSONClass jc = base.GetJSON(includePhysical, includeAppearance, forceStore);
+			if ((includePhysical && includeAppearance) || forceStore) // StoreType.Full
+			{
+				jc["idlepose"] = SaveAnimations();
+				needsStore = true;
+			}
+			return jc;
+		}
+
+		public override void LateRestoreFromJSON(JSONClass jc, bool restorePhysical = true, bool restoreAppearance = true, bool setMissingToDefault = true)
+		{
+			base.LateRestoreFromJSON(jc, restorePhysical, restoreAppearance, setMissingToDefault);
+			if (restorePhysical && restoreAppearance) // StoreType.Full
+			{
+				if (jc.HasKey("idlepose"))
+					LoadAnimations(jc["idlepose"].AsObject);
+				myNeedRefresh = true;
+			}
+		}
+
+		public void ReceiveMessage(String messageString) {
+			mySendMessage.valNoCallback = "";
+			foreach(var l in myCurrentAnimation.myLayers) {
+				Layer layer = l.Value;
+				foreach(var m in layer.myMessages) {
+					Message message = m.Value;
+					if(message.myMessageString == messageString) {
+						State currentState = layer.myCurrentState;
+						if(message.mySourceStates.Values.ToList().Contains(currentState)) {
+							Transition transition = new Transition(currentState, message);
+							layer.SetTransition(transition);
+						}
+					}
+				}
+			}
+		}
+
+		private void LoadAnimationsAction(string v)
+		{
+			myLoadAnimation.valNoCallback = string.Empty;
+			JSONClass jc = LoadJSON(BASE_DIRECTORY+"/"+v).AsObject;
+			if (jc != null)
+				LoadAnimations(jc);
+				UIRefreshMenu();
+		}
+
+		private void PlayPauseAction(bool b)
+		{
+			myPlayPaused.val = b;
+			myPaused = (myMenuItem != MENU_PLAY || myPlayPaused.val);
+		}
+
 		private Animation CreateAnimation(string name)
 		{
 			Animation a = new Animation(name);
@@ -119,8 +156,11 @@ namespace HaremLife
 		private State CreateState(string name)
 		{
 			State s = new State(this, name) {
-				myWaitDurationMin = DEFAULT_WAIT_DURATION_MIN,
-				myWaitDurationMax = DEFAULT_WAIT_DURATION_MAX,
+				myWaitDurationMin = myGlobalDefaultWaitDurationMin.val,
+				myWaitDurationMax = myGlobalDefaultWaitDurationMax.val,
+				myDefaultDuration = myGlobalDefaultTransitionDuration.val,
+				myDefaultEaseInDuration = myGlobalDefaultEaseInDuration.val,
+				myDefaultEaseOutDuration = myGlobalDefaultEaseOutDuration.val
 			};
 			CaptureState(s);
 			if(myCurrentLayer.myCurrentState != null) {
@@ -173,64 +213,6 @@ namespace HaremLife
 				myCurrentLayer.myControlCaptures[i].setDefaults(state, oldState);
 		}
 
-		private void LoadAnimationsAction(string v)
-		{
-			myLoadAnimation.valNoCallback = string.Empty;
-			JSONClass jc = LoadJSON(BASE_DIRECTORY+"/"+v).AsObject;
-			if (jc != null)
-				LoadAnimations(jc);
-				UIRefreshMenu();
-		}
-
-		private void SwitchAnimationAction(string v)
-		{
-			bool initPlayPaused = myPlayPaused.val;
-			myPlayPaused.val = true;
-			mySwitchAnimation.valNoCallback = string.Empty;
-
-			Animation animation;
-			myAnimations.TryGetValue(v, out animation);
-			SetAnimation(animation);
-
-			List<string> layers = myCurrentAnimation.myLayers.Keys.ToList();
-			layers.Sort();
-			if(layers.Count > 0) {
-				Layer layer;
-				foreach (var layerKey in layers) {
-					myCurrentAnimation.myLayers.TryGetValue(layerKey, out layer);
-					SetLayer(layer);
-				}
-			}
-			myPlayPaused.val = initPlayPaused;
-		}
-
-		private void SwitchLayerAction(string v)
-		{
-			mySwitchLayer.valNoCallback = string.Empty;
-
-			Layer layer;
-
-			myCurrentAnimation.myLayers.TryGetValue(v, out layer);
-			SetLayer(layer);
-		}
-
-		private void SwitchStateAction(string v)
-		{
-			mySwitchState.valNoCallback = string.Empty;
-
-			State state;
-			if (myCurrentLayer.myStates.TryGetValue(v, out state))
-				myCurrentLayer.SetState(state);
-			else
-				SuperController.LogError("AnimationPoser: Can't switch to unknown state '"+v+"'!");
-		}
-
-		private void PlayPauseAction(bool b)
-		{
-			myPlayPaused.val = b;
-			myPaused = (myMenuItem != MENU_PLAY || myPlayPaused.val);
-		}
-
 		private void Update()
 		{
 			bool isLoading = SuperController.singleton.isLoading;
@@ -274,693 +256,14 @@ namespace HaremLife
 			myNeedRefresh = true;
 		}
 
-		public override JSONClass GetJSON(bool includePhysical = true, bool includeAppearance = true, bool forceStore = false)
-		{
-			JSONClass jc = base.GetJSON(includePhysical, includeAppearance, forceStore);
-			if ((includePhysical && includeAppearance) || forceStore) // StoreType.Full
-			{
-				jc["idlepose"] = SaveAnimations();
-				needsStore = true;
-			}
-			return jc;
-		}
-
-		public override void LateRestoreFromJSON(JSONClass jc, bool restorePhysical = true, bool restoreAppearance = true, bool setMissingToDefault = true)
-		{
-			base.LateRestoreFromJSON(jc, restorePhysical, restoreAppearance, setMissingToDefault);
-			if (restorePhysical && restoreAppearance) // StoreType.Full
-			{
-				if (jc.HasKey("idlepose"))
-					LoadAnimations(jc["idlepose"].AsObject);
-				myNeedRefresh = true;
-			}
-		}
-
-		private JSONClass SaveAnimations()
-		{
-			JSONClass jc = new JSONClass();
-
-			// save info
-			JSONClass info = new JSONClass();
-			info["Format"] = "HaremLife.AnimationPoser";
-			info["Version"].AsInt = 9;
-			string creatorName = UserPreferences.singleton.creatorName;
-			if (string.IsNullOrEmpty(creatorName))
-				creatorName = "Unknown";
-			info["Author"] = creatorName;
-			jc["Info"] = info;
-
-			// save settings
-			if (myCurrentState != null)
-				jc["InitialState"] = myCurrentState.myName;
-			jc["Paused"].AsBool = myPlayPaused.val;
-			jc["DefaultToWorldAnchor"].AsBool = myOptionsDefaultToWorldAnchor.val;
-
-			JSONArray anims = new JSONArray();
-
-			foreach(var an in myAnimations)
-			{
-				Animation animation = an.Value;
-				JSONClass anim = new JSONClass();
-				anim["Name"] = animation.myName;
-				JSONArray llist = new JSONArray();
-				foreach(var l in animation.myLayers){
-					llist.Add("", SaveLayer(l.Value));
-				}
-				anim["Layers"] = llist;
-				anims.Add("", anim);
-			}
-
-			jc["Animations"] = anims;
-
-			return jc;
-		}
-
-		private void LoadAnimations(JSONClass jc)
-		{
-			// load info
-			myAnimations.Clear();
-			int version = jc["Info"].AsObject["Version"].AsInt;
-
-			// load captures
-			JSONArray anims = jc["Animations"].AsArray;
-			for (int l=0; l<anims.Count; ++l)
-			{
-				JSONClass anim = anims[l].AsObject;
-				myCurrentAnimation = CreateAnimation(anim["Name"]);
-			}
-
-			for (int l=0; l<anims.Count; ++l)
-			{
-				JSONClass anim = anims[l].AsObject;
-				if (!myAnimations.TryGetValue(anim["Name"], out myCurrentAnimation))
-					continue;
-				JSONArray layers = anim["Layers"].AsArray;
-				for(int m=0; m<layers.Count; m++)
-				{
-					JSONClass layer = layers[m].AsObject;
-					LoadLayer(layer, false, false);
-				}
-			}
-
-			for (int l=0; l<anims.Count; ++l)
-			{
-				JSONClass anim = anims[l].AsObject;
-				if (!myAnimations.TryGetValue(anim["Name"], out myCurrentAnimation))
-					continue;
-				JSONArray layers = anim["Layers"].AsArray;
-				for(int m=0; m<layers.Count; m++)
-				{
-					JSONClass layer = layers[m].AsObject;
-					LoadInterLayerTransitions(layer, false, false);
-				}
-			}
-
-			for (int l=0; l<anims.Count; ++l)
-			{
-				JSONClass anim = anims[l].AsObject;
-				if (!myAnimations.TryGetValue(anim["Name"], out myCurrentAnimation))
-					continue;
-				JSONArray layers = anim["Layers"].AsArray;
-				for(int m=0; m<layers.Count; m++)
-				{
-					JSONClass layer = layers[m].AsObject;
-					LoadInterAnimationTransitions(layer, false, false);
-				}
-			}
-
-			// load settings
-			myPlayPaused.valNoCallback = jc.HasKey("Paused") && jc["Paused"].AsBool;
-			myPlayPaused.setCallbackFunction(myPlayPaused.val);
-
-			if (myCurrentAnimation != null)
-			{
-				myMainAnimation.valNoCallback = myCurrentAnimation.myName;
-				myMainAnimation.setCallbackFunction(myCurrentAnimation.myName);
-			}
-			if (myCurrentLayer != null)
-			{
-				myMainLayer.valNoCallback = myCurrentLayer.myName;
-				myMainLayer.setCallbackFunction(myCurrentLayer.myName);
-			}
-			if (myCurrentState != null)
-			{
-				myMainState.valNoCallback = myCurrentState.myName;
-				myMainState.setCallbackFunction(myCurrentState.myName);
-			}
-
-			myOptionsDefaultToWorldAnchor.val = jc.HasKey("DefaultToWorldAnchor") && jc["DefaultToWorldAnchor"].AsBool;
-		}
-
-		private JSONClass SaveLayer(Layer layerToSave)
-		{
-			JSONClass jc = new JSONClass();
-
-			// save info
-			JSONClass info = new JSONClass();
-			info["Format"] = "HaremLife.AnimationPoser";
-			info["Version"] = "3.2";
-			string creatorName = UserPreferences.singleton.creatorName;
-			if (string.IsNullOrEmpty(creatorName))
-				creatorName = "Unknown";
-			info["Author"] = creatorName;
-			jc["Info"] = info;
-
-			// save settings
-			if (myCurrentState != null)
-				jc["InitialState"] = myCurrentState.myName;
-			jc["Paused"].AsBool = myPlayPaused.val;
-			jc["DefaultToWorldAnchor"].AsBool = myOptionsDefaultToWorldAnchor.val;
-
-			JSONClass layer = new JSONClass();
-			layer["Name"] = layerToSave.myName;
-
-			// save roles
-			if (layerToSave.myRoles.Keys.Count > 0)
-			{
-				JSONArray rlist = new JSONArray();
-				foreach (var r in layerToSave.myRoles)
-				{
-					Role role = r.Value;
-					JSONClass rclass = new JSONClass();
-					rclass["Name"] = role.myName;
-					if(role.myPerson != null) {
-						rclass["Person"] = role.myPerson.name;
-					} else {
-						rclass["Person"] = "";
-					}
-					SuperController.LogError(rclass["Person"]);
-					// ccclass["Person"] = r.myPerson;
-					rlist.Add("", rclass);
-				}
-				layer["Roles"] = rlist;
-			}
-
-			// save captures
-			if (layerToSave.myControlCaptures.Count > 0)
-			{
-				JSONArray cclist = new JSONArray();
-				for (int i=0; i<layerToSave.myControlCaptures.Count; ++i)
-				{
-					ControlCapture cc = layerToSave.myControlCaptures[i];
-					JSONClass ccclass = new JSONClass();
-					ccclass["Name"] = cc.myName;
-					ccclass["ApplyPos"].AsBool = cc.myApplyPosition;
-					ccclass["ApplyRot"].AsBool = cc.myApplyRotation;
-					cclist.Add("", ccclass);
-				}
-				layer["ControlCaptures"] = cclist;
-			}
-			if (layerToSave.myMorphCaptures.Count > 0)
-			{
-				JSONArray mclist = new JSONArray();
-				for (int i=0; i<layerToSave.myMorphCaptures.Count; ++i)
-				{
-					MorphCapture mc = layerToSave.myMorphCaptures[i];
-					JSONClass mcclass = new JSONClass();
-					mcclass["UID"] = mc.myMorph.uid;
-					mcclass["SID"] = mc.mySID;
-					mcclass["Apply"].AsBool = mc.myApply;
-					mclist.Add("", mcclass);
-				}
-				layer["MorphCaptures"] = mclist;
-			}
-
-			// save states
-			JSONArray slist = new JSONArray();
-			foreach (var s in layerToSave.myStates)
-			{
-				State state = s.Value;
-				JSONClass st = new JSONClass();
-				st["Name"] = state.myName;
-				st["IsRootState"].AsBool = state.myIsRootState;
-				st["WaitDurationMin"].AsFloat = state.myWaitDurationMin;
-				st["WaitDurationMax"].AsFloat = state.myWaitDurationMax;
-				st["DefaultDuration"].AsFloat = state.myDefaultDuration;
-				st["DefaultEaseInDuration"].AsFloat = state.myDefaultEaseInDuration;
-				st["DefaultEaseOutDuration"].AsFloat = state.myDefaultEaseOutDuration;
-				st["DefaultProbability"].AsFloat = state.myDefaultProbability;
-
-				JSONArray tlist = new JSONArray();
-				for (int i=0; i<state.myTransitions.Count; ++i) {
-					Transition transition = state.myTransitions[i];
-					JSONClass t = new JSONClass();
-					t["SourceState"] = transition.mySourceState.myName;
-					t["TargetState"] = transition.myTargetState.myName;
-					if(transition.myTargetState.myLayer == transition.mySourceState.myLayer)
-						t["TargetLayer"] = "[Self]";
-					else
-						t["TargetLayer"] = transition.myTargetState.myLayer.myName;
-					if(transition.myTargetState.myAnimation == transition.mySourceState.myAnimation)
-						t["TargetAnimation"] = "[Self]";
-					else
-						t["TargetAnimation"] = transition.myTargetState.myAnimation.myName;
-					t["Duration"].AsFloat = transition.myDuration;
-					t["EaseInDuration"].AsFloat = transition.myEaseInDuration;
-					t["EaseOutDuration"].AsFloat = transition.myEaseOutDuration;
-					t["Probability"].AsFloat = transition.myProbability;
-
-					JSONClass synct = new JSONClass();
-					foreach (var syncl in transition.mySyncTargets) {
-						synct[syncl.Key.myName] = syncl.Value.myName;
-					}
-					t["SyncTargets"] = synct;
-
-					tlist.Add(t);
-				}
-				st["Transitions"] = tlist;
-
-				if (state.myControlEntries.Count > 0)
-				{
-					JSONClass celist = new JSONClass();
-					foreach (var e in state.myControlEntries)
-					{
-						ControlEntryAnchored ce = e.Value;
-						JSONClass ceclass = new JSONClass();
-						ceclass["PX"].AsFloat = ce.myAnchorOffset.myPosition.x;
-						ceclass["PY"].AsFloat = ce.myAnchorOffset.myPosition.y;
-						ceclass["PZ"].AsFloat = ce.myAnchorOffset.myPosition.z;
-						Vector3 rotation = ce.myAnchorOffset.myRotation.eulerAngles;
-						ceclass["RX"].AsFloat = rotation.x;
-						ceclass["RY"].AsFloat = rotation.y;
-						ceclass["RZ"].AsFloat = rotation.z;
-						ceclass["AnchorMode"].AsInt = ce.myAnchorMode;
-						if (ce.myAnchorMode >= ControlEntryAnchored.ANCHORMODE_SINGLE)
-						{
-							ceclass["DampingTime"].AsFloat = ce.myDampingTime;
-							if(ce.myAnchorAAtom == containingAtom.uid)
-								ceclass["AnchorAAtom"] = "[Self]";
-							else
-								ceclass["AnchorAAtom"] = ce.myAnchorAAtom;
-							ceclass["AnchorAControl"] = ce.myAnchorAControl;
-						}
-						if (ce.myAnchorMode == ControlEntryAnchored.ANCHORMODE_BLEND)
-						{
-							ceclass["AnchorBAtom"] = ce.myAnchorBAtom;
-							ceclass["AnchorBControl"] = ce.myAnchorBControl;
-							ceclass["BlendRatio"].AsFloat = ce.myBlendRatio;
-						}
-						celist[e.Key.myName] = ceclass;
-					}
-					st["ControlEntries"] = celist;
-				}
-
-				if (state.myMorphEntries.Count > 0)
-				{
-					JSONClass melist = new JSONClass();
-					foreach (var e in state.myMorphEntries)
-					{
-						melist[e.Key.mySID].AsFloat = e.Value;
-					}
-					st["MorphEntries"] = melist;
-				}
-
-				st[state.EnterBeginTrigger.Name] = state.EnterBeginTrigger.GetJSON(base.subScenePrefix);
-				st[state.EnterEndTrigger.Name] = state.EnterEndTrigger.GetJSON(base.subScenePrefix);
-				st[state.ExitBeginTrigger.Name] = state.ExitBeginTrigger.GetJSON(base.subScenePrefix);
-				st[state.ExitEndTrigger.Name] = state.ExitEndTrigger.GetJSON(base.subScenePrefix);
-
-				slist.Add("", st);
-			}
-			layer["States"] = slist;
-
-			jc["Layer"] = layer;
-
-			return jc;
-		}
-
-		private Layer LoadLayer(JSONClass jc, bool keepName, bool clearStates)
-		{
-			// reset
-			if(myCurrentLayer != null & clearStates){
-				if(myCurrentLayer.myStates.Count > 0){
-					foreach (var s in myCurrentLayer.myStates)
-					{
-						State state = s.Value;
-						state.EnterBeginTrigger.Remove();
-						state.EnterEndTrigger.Remove();
-						state.ExitBeginTrigger.Remove();
-						state.ExitEndTrigger.Remove();
-					}
-				}
-				myCurrentLayer.myControlCaptures.Clear();
-				myCurrentLayer.myMorphCaptures.Clear();
-				myCurrentLayer.myStates.Clear();
-				myCurrentState = null;
-				myClock = 0.0f;
-			}
-
-			// load info
-			int version = jc["Info"].AsObject["Version"].AsInt;
-
-			// load captures
-			JSONClass layer = jc["Layer"].AsObject;
-
-			if(keepName)
-				myCurrentLayer = CreateLayer(myCurrentLayer.myName);
-			else
-				myCurrentLayer = CreateLayer(layer["Name"]);
-
-			// load roles
-			if (layer.HasKey("Roles"))
-			{
-				JSONArray rlist = layer["Roles"].AsArray;
-				for (int i=0; i<rlist.Count; ++i)
-				{
-					Role r;
-					JSONClass rclass = rlist[i].AsObject;
-					r = new Role(rclass["Name"]);
-					if(rclass["Person"] != "") {
-						Atom person = SuperController.singleton.GetAtoms().Find(a => String.Equals(a.name, rclass["Person"]));
-						if(person != null) {
-							r.myPerson = person;
-							SuperController.LogError(r.myPerson.name);
-						}
-					}
-					myCurrentLayer.myRoles[r.myName] = r;
-				}
-			}
-
-			// load captures
-			if (layer.HasKey("ControlCaptures"))
-			{
-				JSONArray cclist = layer["ControlCaptures"].AsArray;
-				for (int i=0; i<cclist.Count; ++i)
-				{
-					ControlCapture cc;
-					JSONClass ccclass = cclist[i].AsObject;
-					cc = new ControlCapture(this, ccclass["Name"]);
-					cc.myApplyPosition = ccclass["ApplyPos"].AsBool;
-					cc.myApplyRotation = ccclass["ApplyRot"].AsBool;
-
-					if (cc.IsValid())
-						myCurrentLayer.myControlCaptures.Add(cc);
-				}
-			}
-			if (layer.HasKey("MorphCaptures"))
-			{
-				JSONArray mclist = layer["MorphCaptures"].AsArray;
-				DAZCharacterSelector geometry = containingAtom.GetStorableByID("geometry") as DAZCharacterSelector;
-				for (int i=0; i<mclist.Count; ++i)
-				{
-					MorphCapture mc;
-					JSONClass mcclass = mclist[i].AsObject;
-					string uid = mcclass["UID"];
-					if (uid.EndsWith(".vmi")) // handle custom morphs, resolve VAR packages
-						uid = SuperController.singleton.NormalizeLoadPath(uid);
-					string sid = mcclass["SID"];
-					mc = new MorphCapture(geometry, uid, sid);
-					mc.myApply = mcclass["Apply"].AsBool;
-
-					if (mc.IsValid())
-						myCurrentLayer.myMorphCaptures.Add(mc);
-				}
-			}
-
-			// load states
-			JSONArray slist = layer["States"].AsArray;
-			for (int i=0; i<slist.Count; ++i)
-			{
-				// load state
-				JSONClass st = slist[i].AsObject;
-				State state = new State(this, st["Name"]) {
-					myIsRootState = st["IsRootState"].AsBool,
-					myWaitDurationMin = st["WaitDurationMin"].AsFloat,
-					myWaitDurationMax = st["WaitDurationMax"].AsFloat,
-					myDefaultDuration = st.HasKey("DefaultDuration") ? st["DefaultDuration"].AsFloat : DEFAULT_TRANSITION_DURATION,
-					myDefaultEaseInDuration = st.HasKey("DefaultEaseInDuration") ? st["DefaultEaseInDuration"].AsFloat : DEFAULT_EASEIN_DURATION,
-					myDefaultEaseOutDuration = st.HasKey("DefaultEaseOutDuration") ? st["DefaultEaseOutDuration"].AsFloat : DEFAULT_EASEOUT_DURATION,
-					myDefaultProbability = st["DefaultProbability"].AsFloat,
-				};
-
-				state.EnterBeginTrigger.RestoreFromJSON(st, base.subScenePrefix, base.mergeRestore, true);
-				state.EnterEndTrigger.RestoreFromJSON(st, base.subScenePrefix, base.mergeRestore, true);
-				state.ExitBeginTrigger.RestoreFromJSON(st, base.subScenePrefix, base.mergeRestore, true);
-				state.ExitEndTrigger.RestoreFromJSON(st, base.subScenePrefix, base.mergeRestore, true);
-
-
-				if (myCurrentLayer.myStates.ContainsKey(state.myName))
-					continue;
-				myCurrentLayer.myStates[state.myName] = state;
-
-				// load control captures
-				if (myCurrentLayer.myControlCaptures.Count > 0)
-				{
-					JSONClass celist = st["ControlEntries"].AsObject;
-					foreach (string ccname in celist.Keys)
-					{
-						ControlCapture cc = myCurrentLayer.myControlCaptures.Find(x => x.myName == ccname);
-						if (cc == null)
-							continue;
-
-						JSONClass ceclass = celist[ccname].AsObject;
-						ControlEntryAnchored ce = new ControlEntryAnchored(this, ccname, state, cc);
-						ce.myAnchorOffset.myPosition.x = ceclass["PX"].AsFloat;
-						ce.myAnchorOffset.myPosition.y = ceclass["PY"].AsFloat;
-						ce.myAnchorOffset.myPosition.z = ceclass["PZ"].AsFloat;
-						Vector3 rotation;
-						rotation.x = ceclass["RX"].AsFloat;
-						rotation.y = ceclass["RY"].AsFloat;
-						rotation.z = ceclass["RZ"].AsFloat;
-						ce.myAnchorOffset.myRotation.eulerAngles = rotation;
-						ce.myAnchorMode = ceclass["AnchorMode"].AsInt;
-						if (ce.myAnchorMode >= ControlEntryAnchored.ANCHORMODE_SINGLE)
-						{
-							ce.myDampingTime = ceclass["DampingTime"].AsFloat;
-							ce.myAnchorAAtom = ceclass["AnchorAAtom"].Value;
-							ce.myAnchorAControl = ceclass["AnchorAControl"].Value;
-
-							if (ce.myAnchorAAtom == "[Self]") // legacy
-								ce.myAnchorAAtom = containingAtom.uid;
-						}
-						if (ce.myAnchorMode == ControlEntryAnchored.ANCHORMODE_BLEND)
-						{
-							ce.myAnchorBAtom = ceclass["AnchorBAtom"].Value;
-							ce.myAnchorBControl = ceclass["AnchorBControl"].Value;
-							ce.myBlendRatio = ceclass["BlendRatio"].AsFloat;
-
-							if (ce.myAnchorBAtom == "[Self]") // legacy
-								ce.myAnchorBAtom = containingAtom.uid;
-						}
-						ce.Initialize();
-
-						state.myControlEntries.Add(cc, ce);
-					}
-					for (int j=0; j<myCurrentLayer.myControlCaptures.Count; ++j)
-					{
-						if (!state.myControlEntries.ContainsKey(myCurrentLayer.myControlCaptures[j]))
-							myCurrentLayer.myControlCaptures[j].CaptureEntry(state);
-					}
-				}
-
-				// load morph captures
-				if (myCurrentLayer.myMorphCaptures.Count > 0)
-				{
-					JSONClass melist = st["MorphEntries"].AsObject;
-					foreach (string key in melist.Keys)
-					{
-						MorphCapture mc = null;
-						mc = myCurrentLayer.myMorphCaptures.Find(x => x.mySID == key);
-						if (mc == null)
-						{
-							continue;
-						}
-						float me = melist[key].AsFloat;
-						state.myMorphEntries.Add(mc, me);
-					}
-					for (int j=0; j<myCurrentLayer.myMorphCaptures.Count; ++j)
-					{
-						if (!state.myMorphEntries.ContainsKey(myCurrentLayer.myMorphCaptures[j]))
-							myCurrentLayer.myMorphCaptures[j].CaptureEntry(state);
-					}
-				}
-			}
-
-			// load transitions
-			for (int i=0; i<slist.Count; ++i)
-			{
-				JSONClass st = slist[i].AsObject;
-				State source;
-				if (!myCurrentLayer.myStates.TryGetValue(st["Name"], out source))
-					continue;
-
-				JSONArray tlist = st["Transitions"].AsArray;
-				for (int j=0; j<tlist.Count; ++j)
-				{
-					JSONClass tclass = tlist[j].AsObject;
-					if(!String.Equals(tclass["TargetLayer"], "[Self]"))
-						continue;
-					State target = myCurrentLayer.myStates[tclass["TargetState"]];
-					Transition transition = new Transition(source, target);
-					transition.myProbability = tclass["Probability"].AsFloat;
-					transition.myDuration = tclass["Duration"].AsFloat;
-					transition.myEaseInDuration = tclass["EaseInDuration"].AsFloat;
-					transition.myEaseOutDuration = tclass["EaseOutDuration"].AsFloat;
-					transition.mySourceState = source;
-					transition.myTargetState = target;
-
-					JSONClass synctlist = tclass["SyncTargets"].AsObject;
-					foreach (string key in synctlist.Keys) {
-						Layer syncLayer;
-						if (!myCurrentAnimation.myLayers.TryGetValue(key, out syncLayer))
-							continue;
-						State syncState;
-						if (!syncLayer.myStates.TryGetValue(synctlist[key], out syncState))
-							continue;
-						transition.mySyncTargets[syncLayer] = syncState;
-					}
-
-					source.myTransitions.Add(transition);
-				}
-			}
-
-			// load settings
-			myPlayPaused.valNoCallback = jc.HasKey("Paused") && jc["Paused"].AsBool;
-			myPlayPaused.setCallbackFunction(myPlayPaused.val);
-
-
-			myOptionsDefaultToWorldAnchor.val = jc.HasKey("DefaultToWorldAnchor") && jc["DefaultToWorldAnchor"].AsBool;
-
-			SwitchLayerAction(myCurrentLayer.myName);
-
-			// blend to initial state
-			if (jc.HasKey("InitialState"))
-			{
-				State initial;
-				if (myCurrentLayer.myStates.TryGetValue(jc["InitialState"].Value, out initial))
-				{
-					myCurrentLayer.SetState(initial);
-					myMainState.valNoCallback = initial.myName;
-				}
-			}
-			return myCurrentLayer;
-		}
-
-		private void LoadInterLayerTransitions(JSONClass jc, bool keepName, bool clearStates)
-		{
-			JSONClass layer = jc["Layer"].AsObject;
-
-			if(!myCurrentAnimation.myLayers.TryGetValue(layer["Name"], out myCurrentLayer))
-				return;
-
-			// load transitions
-			JSONArray slist = layer["States"].AsArray;
-			for (int i=0; i<slist.Count; ++i)
-			{
-				JSONClass st = slist[i].AsObject;
-				State source;
-				if (!myCurrentLayer.myStates.TryGetValue(st["Name"], out source))
-					continue;
-
-				JSONArray tlist = st["Transitions"].AsArray;
-				for (int j=0; j<tlist.Count; ++j)
-				{
-					JSONClass tclass = tlist[j].AsObject;
-					if(String.Equals(tclass["TargetLayer"], "[Self]"))
-						continue;
-					if(!String.Equals(tclass["TargetAnimation"], "[Self]"))
-						continue;
-
-					Layer targetLayer;
-					if(!myCurrentAnimation.myLayers.TryGetValue(tclass["TargetLayer"], out targetLayer))
-						continue;
-
-					State target;
-					if(!targetLayer.myStates.TryGetValue(tclass["TargetState"], out target))
-						continue;
-
-					Transition transition = new Transition(source, target);
-					transition.myProbability = tclass["Probability"].AsFloat;
-					transition.myDuration = tclass["Duration"].AsFloat;
-					transition.myEaseInDuration = tclass["EaseInDuration"].AsFloat;
-					transition.myEaseOutDuration = tclass["EaseOutDuration"].AsFloat;
-					transition.mySourceState = source;
-					transition.myTargetState = target;
-
-					JSONClass synctlist = tclass["SyncTargets"].AsObject;
-					foreach (string key in synctlist.Keys) {
-						Layer syncLayer;
-						if (!myCurrentAnimation.myLayers.TryGetValue(key, out syncLayer))
-							continue;
-						State syncState;
-						if (!syncLayer.myStates.TryGetValue(synctlist[key], out syncState))
-							continue;
-						transition.mySyncTargets[syncLayer] = syncState;
-					}
-
-					source.myTransitions.Add(transition);
-				}
-			}
-		}
-
-		private void LoadInterAnimationTransitions(JSONClass jc, bool keepName, bool clearStates)
-		{
-			JSONClass layer = jc["Layer"].AsObject;
-
-			if (!myCurrentAnimation.myLayers.TryGetValue(layer["Name"], out myCurrentLayer))
-				return;
-
-			// load transitions
-			JSONArray slist = layer["States"].AsArray;
-			for (int i=0; i<slist.Count; ++i)
-			{
-				JSONClass st = slist[i].AsObject;
-				State source;
-				if (!myCurrentLayer.myStates.TryGetValue(st["Name"], out source))
-					continue;
-
-				JSONArray tlist = st["Transitions"].AsArray;
-				for (int j=0; j<tlist.Count; ++j)
-				{
-					JSONClass tclass = tlist[j].AsObject;
-					if(tclass["TargetLayer"] == "[Self]")
-					if(String.Equals(tclass["TargetLayer"], "[Self]"))
-						continue;
-					if(String.Equals(tclass["TargetAnimation"], "[Self]"))
-						continue;
-
-					Animation targetAnimation;
-					if(!myAnimations.TryGetValue(tclass["TargetAnimation"], out targetAnimation))
-						continue;
-
-					Layer targetLayer;
-					if(!targetAnimation.myLayers.TryGetValue(tclass["TargetLayer"], out targetLayer))
-						continue;
-
-					State target;
-					if(!targetLayer.myStates.TryGetValue(tclass["TargetState"], out target))
-						continue;
-
-					Transition transition = new Transition(source, target);
-					transition.myProbability = tclass["Probability"].AsFloat;
-					transition.myDuration = tclass["Duration"].AsFloat;
-					transition.myEaseInDuration = tclass["EaseInDuration"].AsFloat;
-					transition.myEaseOutDuration = tclass["EaseOutDuration"].AsFloat;
-					transition.mySourceState = source;
-					transition.myTargetState = target;
-
-					JSONClass synctlist = tclass["SyncTargets"].AsObject;
-					foreach (string key in synctlist.Keys) {
-						Layer syncLayer;
-						if (!targetAnimation.myLayers.TryGetValue(key, out syncLayer))
-							continue;
-						State syncState;
-						if (!syncLayer.myStates.TryGetValue(synctlist[key], out syncState))
-							continue;
-						transition.mySyncTargets[syncLayer] = syncState;
-					}
-
-					source.myTransitions.Add(transition);
-				}
-			}
-		}
-
 		// =======================================================================================
 
 		private class Animation
 		{
 			public string myName;
 			public Dictionary<string, Layer> myLayers = new Dictionary<string, Layer>();
+			public Dictionary<string, Role> myRoles = new Dictionary<string, Role>();
+			public float mySpeed = 1.0f;
 
 			public Animation(string name)
 			{
@@ -984,12 +287,13 @@ namespace HaremLife
 			public string myName;
 			public Animation myAnimation;
 			public Dictionary<string, State> myStates = new Dictionary<string, State>();
-			public Dictionary<string, Role> myRoles = new Dictionary<string, Role>();
+			public Dictionary<string, Message> myMessages = new Dictionary<string, Message>();
 			public bool myNoValidTransition = false;
 			public State myCurrentState;
 			public List<ControlCapture> myControlCaptures = new List<ControlCapture>();
 			public List<MorphCapture> myMorphCaptures = new List<MorphCapture>();
 			private Transition myTransition;
+			private float myTransitionNoise = 0.0f;
 			public float myClock = 0.0f;
 			public float myDuration = 1.0f;
 			private List<TriggerActionDiscrete> myTriggerActionsNeedingUpdate = new List<TriggerActionDiscrete>();
@@ -1062,14 +366,13 @@ namespace HaremLife
 			{
 				for (int i=0; i<myTriggerActionsNeedingUpdate.Count; ++i){
 					myTriggerActionsNeedingUpdate[i].Update();
-					SuperController.LogError(myTriggerActionsNeedingUpdate[i].name);
 				}
 				myTriggerActionsNeedingUpdate.RemoveAll(a => !a.timerActive);
 
 				bool paused = myPaused && myTransition == null;
 				// if there is a transition selected or animation is unpaused
 				if (!paused)
-					myClock = Mathf.Min(myClock + Time.deltaTime, 100000.0f);
+					myClock = Mathf.Min(myClock + Time.deltaTime*myCurrentAnimation.mySpeed, 100000.0f);
 
 				float t;
 				// if not paused
@@ -1086,7 +389,7 @@ namespace HaremLife
 						for (int i=0; i<myMorphCaptures.Count; ++i)
 							myMorphCaptures[i].UpdateTransition(t);
 
-						if (myClock >= myDuration + myTransition.myDuration)
+						if (myClock >= myDuration + myTransition.myDuration + myTransitionNoise)
 						{
 							if (myTransition.myTargetState != null)
 							{
@@ -1100,6 +403,19 @@ namespace HaremLife
 									previousState.ExitEndTrigger.Trigger(myTriggerActionsNeedingUpdate);
 								if (myCurrentState.EnterEndTrigger != null)
 									myCurrentState.EnterEndTrigger.Trigger(myTriggerActionsNeedingUpdate);
+								foreach(var m in myTransition.myMessages) {
+									Role role = m.Key;
+									String message = m.Value;
+									Atom person = role.myPerson;
+									if (person == null) continue;
+									var storableId = person.GetStorableIDs().FirstOrDefault(id => id.EndsWith("HaremLife.AnimationPoser"));
+									if (storableId == null) continue;
+									MVRScript storable = person.GetStorableByID(storableId) as MVRScript;
+									if (storable == null) continue;
+									// if (ReferenceEquals(storable, _plugin)) continue;
+									if (!storable.enabled) continue;
+									storable.SendMessage(nameof(AnimationPoser.ReceiveMessage), message);
+								}
 							}
 							myTransition = null;
 						}
@@ -1167,6 +483,8 @@ namespace HaremLife
 					myMorphCaptures[i].SetTransition(transition);
 
 				myTransition = transition;
+
+				myTransitionNoise = UnityEngine.Random.Range(-transition.myDurationNoise, transition.myDurationNoise);
 
 				if (transition.mySourceState.ExitBeginTrigger != null)
 					transition.mySourceState.ExitBeginTrigger.Trigger(myTriggerActionsNeedingUpdate);
@@ -1244,10 +562,11 @@ namespace HaremLife
 				{
 					CaptureState(myBlendState);
 					myBlendState.AssignOutTriggers(myCurrentState);
-					SetTransition(new Transition(myBlendState, state));
+					SetTransition(new Transition(myBlendState, state, 0.1f*myCurrentAnimation.mySpeed));
 				} else {
-					SetTransition(new Transition(myCurrentState, state));
+					SetTransition(new Transition(myCurrentState, state, 0.1f*myCurrentAnimation.mySpeed));
 				}
+				myClock = myDuration;
 			}
 		}
 		private class Role
@@ -1260,15 +579,21 @@ namespace HaremLife
 			}
 		}
 
-		private class Transition
+		private class BaseTransition
 		{
 			public Dictionary<Layer, State> mySyncTargets = new Dictionary<Layer, State>();
-			public State mySourceState;
+			public Dictionary<Role, String> myMessages = new Dictionary<Role, String>();
 			public State myTargetState;
 			public float myProbability;
 			public float myEaseInDuration;
 			public float myEaseOutDuration;
 			public float myDuration;
+			public float myDurationNoise = 0.0f;
+		}
+
+		private class Transition : BaseTransition
+		{
+			public State mySourceState;
 
 			public Transition(State sourceState, State targetState)
 			{
@@ -1280,15 +605,48 @@ namespace HaremLife
 				myDuration = targetState.myDefaultDuration;
 			}
 
+			public Transition(State sourceState, State targetState, float duration)
+			{
+				mySourceState = sourceState;
+				myTargetState = targetState;
+				myProbability = targetState.myDefaultProbability;
+				myEaseInDuration = 0.0f;
+				myEaseOutDuration = 0.0f;
+				myDuration = duration;
+			}
+
+			private void BuildFromBaseTransition(BaseTransition t) {
+				myTargetState = t.myTargetState;
+				myProbability = t.myProbability;
+				myEaseInDuration = t.myEaseInDuration;
+				myEaseOutDuration = t.myEaseOutDuration;
+				myDuration = t.myDuration;
+				myDurationNoise = t.myDurationNoise;
+				mySyncTargets = t.mySyncTargets;
+			}
+
 			public Transition(Transition transition)
 			{
 				mySourceState = transition.mySourceState;
-				myTargetState = transition.myTargetState;
-				myProbability = transition.myProbability;
-				myEaseInDuration = transition.myEaseInDuration;
-				myEaseOutDuration = transition.myEaseOutDuration;
-				myDuration = transition.myDuration;
-				mySyncTargets = transition.mySyncTargets;
+				myMessages = transition.myMessages;
+				BuildFromBaseTransition(transition);
+			}
+
+			public Transition(State sourceState, Message message)
+			{
+				mySourceState = sourceState;
+				BuildFromBaseTransition(message);
+			}
+		}
+
+		private class Message : BaseTransition
+		{
+			public String myMessageString;
+			public String myName;
+			public Dictionary<string, State> mySourceStates = new Dictionary<string, State>();
+
+			public Message(string name) {
+				myName = name;
 			}
 		}
 
@@ -1299,9 +657,9 @@ namespace HaremLife
 			public Layer myLayer;
 			public float myWaitDurationMin;
 			public float myWaitDurationMax;
-			public float myDefaultDuration = DEFAULT_TRANSITION_DURATION;
-			public float myDefaultEaseInDuration = DEFAULT_EASEIN_DURATION;
-			public float myDefaultEaseOutDuration = DEFAULT_EASEOUT_DURATION;
+			public float myDefaultDuration;
+			public float myDefaultEaseInDuration;
+			public float myDefaultEaseOutDuration;
 			public float myDefaultProbability = DEFAULT_PROBABILITY;
 			public bool myIsRootState = false;
 			public uint myDebugIndex = 0;
@@ -1379,6 +737,7 @@ namespace HaremLife
 				return new State("BlendState") {
 					myWaitDurationMin = 0.0f,
 					myWaitDurationMax = 0.0f,
+					myDefaultDuration = myGlobalDefaultTransitionDuration.val,
 				};
 			}
 
@@ -1637,12 +996,9 @@ namespace HaremLife
 			{
 				myState = state;
 				Atom containingAtom = plugin.GetContainingAtom();
-				if (plugin.myOptionsDefaultToWorldAnchor.val || containingAtom.type != "Person")
+				if (containingAtom.type != "Person" || control == "control")
 					myAnchorMode = ANCHORMODE_WORLD;
-				if(control == "control" && containingAtom.parentAtom != null)
-					myAnchorAAtom = myAnchorBAtom = containingAtom.parentAtom.uid;
-				else
-					myAnchorAAtom = myAnchorBAtom = containingAtom.uid;
+				myAnchorAAtom = myAnchorBAtom = containingAtom.uid;
 				myControlCapture = controlCapture;
 				myAnchorAAtom = myAnchorBAtom = containingAtom.uid;
 			}
@@ -1935,7 +1291,7 @@ namespace HaremLife
 				for (int i=2; i<randomChars.Length; ++i)
 					randomChars[i] = chars[UnityEngine.Random.Range(0, chars.Length)];
 				string sid = new string(randomChars);
-				if (myMorphCaptures.Find(x => x.mySID == sid) == null){
+				if (myCurrentLayer.myMorphCaptures.Find(x => x.mySID == sid) == null){
 					return sid;
 				}
 			}

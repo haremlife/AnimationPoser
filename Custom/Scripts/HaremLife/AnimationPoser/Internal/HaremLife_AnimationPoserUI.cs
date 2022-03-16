@@ -2,6 +2,7 @@ using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.Events;
 using System;
+using System.Linq;
 using System.Text;
 using System.Collections.Generic;
 using MVR.FileManagementSecure;
@@ -36,9 +37,12 @@ namespace HaremLife
 		private JSONStorableStringChooser myAnchorControlListB;
 		private JSONStorableFloat myAnchorBlendRatio;
 		private JSONStorableFloat myAnchorDampingTime;
+		private JSONStorableStringChooser myMessageList;
 		private JSONStorableStringChooser myTargetAnimationList;
 		private JSONStorableStringChooser myTargetLayerList;
+		private JSONStorableStringChooser mySourceStateList;
 		private JSONStorableStringChooser myTargetStateList;
+		private JSONStorableStringChooser mySyncRoleList;
 		private JSONStorableStringChooser mySyncLayerList;
 		private JSONStorableStringChooser mySyncStateList;
 		private JSONStorableStringChooser myRoleList;
@@ -48,6 +52,12 @@ namespace HaremLife
 		private JSONStorableBool myDebugShowPaths;
 		private JSONStorableBool myDebugShowSelectedOnly;
 		private JSONStorableBool myDebugShowTransitions;
+
+		private static JSONStorableFloat myGlobalDefaultTransitionDuration;
+		private JSONStorableFloat myGlobalDefaultEaseInDuration;
+		private JSONStorableFloat myGlobalDefaultEaseOutDuration;
+		private JSONStorableFloat myGlobalDefaultWaitDurationMin;
+		private JSONStorableFloat myGlobalDefaultWaitDurationMax;
 
 		private bool myIsAddingNewState = false;
 		private bool myIsAddingNewLayer = false;
@@ -74,7 +84,8 @@ namespace HaremLife
 		private const int MENU_TRIGGERS    = 5;
 		private const int MENU_ANCHORS     = 6;
 		private const int MENU_ROLES	   = 7;
-		private const int MENU_OPTIONS     = 8;
+		private const int MENU_MESSAGES    = 8;
+		private const int MENU_OPTIONS     = 9;
 
 		private GameObject myLabelWith2BXButtonPrefab;
 		private GameObject myLabelWithMXButtonPrefab;
@@ -141,14 +152,20 @@ namespace HaremLife
 			myAnchorDampingTime = new JSONStorableFloat("Anchor Damping Time", DEFAULT_ANCHOR_DAMPING_TIME, 0.0f, 5.0f, true, true);
 			myAnchorDampingTime.setCallbackFunction += (float v) => UISetAnchorsBlendDamp();
 
-			myOptionsDefaultToWorldAnchor = new JSONStorableBool("Default to World Anchor", false);
-			myDebugShowInfo = new JSONStorableBool("Show Debug Info", false);
-			myDebugShowInfo.setCallbackFunction += (bool v) => UIRefreshMenu();
-			myDebugShowPaths = new JSONStorableBool("Draw Paths", false);
-			myDebugShowPaths.setCallbackFunction += DebugSwitchShowCurves;
-			myDebugShowTransitions = new JSONStorableBool("Draw Transitions", false);
-			myDebugShowTransitions.setCallbackFunction += DebugSwitchShowCurves;
-			myDebugShowSelectedOnly = new JSONStorableBool("Draw Selected Only", false);
+			myGlobalDefaultTransitionDuration = new JSONStorableFloat("Default Transition Duration", DEFAULT_TRANSITION_DURATION, 0.0f, 5.0f, true, true);
+			myGlobalDefaultEaseInDuration = new JSONStorableFloat("Default Ease In Duration", DEFAULT_EASEIN_DURATION, 0.0f, 5.0f, true, true);
+			myGlobalDefaultEaseOutDuration = new JSONStorableFloat("Default Ease Out Duration", DEFAULT_EASEOUT_DURATION, 0.0f, 5.0f, true, true);
+			myGlobalDefaultWaitDurationMin = new JSONStorableFloat("Default Wait Duration Min", DEFAULT_WAIT_DURATION_MIN, 0.0f, 300.0f, true, true);
+			myGlobalDefaultWaitDurationMax = new JSONStorableFloat("Default Wait Duration Max", DEFAULT_WAIT_DURATION_MAX, 0.0f, 300.0f, true, true);
+
+			// myOptionsDefaultToWorldAnchor = new JSONStorableBool("Default to World Anchor", false);
+			// myDebugShowInfo = new JSONStorableBool("Show Debug Info", false);
+			// myDebugShowInfo.setCallbackFunction += (bool v) => UIRefreshMenu();
+			// myDebugShowPaths = new JSONStorableBool("Draw Paths", false);
+			// myDebugShowPaths.setCallbackFunction += DebugSwitchShowCurves;
+			// myDebugShowTransitions = new JSONStorableBool("Draw Transitions", false);
+			// myDebugShowTransitions.setCallbackFunction += DebugSwitchShowCurves;
+			// myDebugShowSelectedOnly = new JSONStorableBool("Draw Selected Only", false);
 
 			UIRefreshMenu();
 
@@ -191,10 +208,10 @@ namespace HaremLife
 				OpenTab(2);
 			}));
 
-			bindings.Add(new JSONStorableAction("Toggle Debug Info",          () => myDebugShowInfo.val = !myDebugShowInfo.val));
-			bindings.Add(new JSONStorableAction("Toggle Debug Paths",         () => myDebugShowPaths.val = !myDebugShowPaths.val));
-			bindings.Add(new JSONStorableAction("Toggle Debug Transitions",   () => myDebugShowTransitions.val = !myDebugShowTransitions.val));
-			bindings.Add(new JSONStorableAction("Toggle Debug Selected Only", () => myDebugShowSelectedOnly.val = !myDebugShowSelectedOnly.val));
+			// bindings.Add(new JSONStorableAction("Toggle Debug Info",          () => myDebugShowInfo.val = !myDebugShowInfo.val));
+			// bindings.Add(new JSONStorableAction("Toggle Debug Paths",         () => myDebugShowPaths.val = !myDebugShowPaths.val));
+			// bindings.Add(new JSONStorableAction("Toggle Debug Transitions",   () => myDebugShowTransitions.val = !myDebugShowTransitions.val));
+			// bindings.Add(new JSONStorableAction("Toggle Debug Selected Only", () => myDebugShowSelectedOnly.val = !myDebugShowSelectedOnly.val));
 		}
 
 		private void OpenTab(int tabIdx)
@@ -541,13 +558,14 @@ namespace HaremLife
 			Utils.OnInitUI(CreateUIElement);
 			switch (myMenuItem)
 			{
-				case MENU_LAYERS:      CreateLayersMenu();    break;
+				case MENU_LAYERS:      CreateLayersMenu();      break;
 				case MENU_ANIMATIONS:  CreateAnimationsMenu();  break;
 				case MENU_STATES:      CreateStateMenu();       break;
 				case MENU_TRANSITIONS: CreateTransitionsMenu(); break;
 				case MENU_TRIGGERS:    CreateTriggers();        break;
 				case MENU_ANCHORS:     CreateAnchorsMenu();     break;
 				case MENU_ROLES:       CreateRolesMenu();       break;
+				case MENU_MESSAGES:    CreateMessagesMenu();    break;
 				case MENU_OPTIONS:     CreateOptionsMenu();     break;
 				default:               CreatePlayMenu();        break;
 			}
@@ -615,7 +633,7 @@ namespace HaremLife
 			CreateMenuPopup(myMainState, true);
 			CreateMenuSpacer(172, true);
 
-			CreateTabs(new string[] { "Play", "Animations", "Layers", "States", "Transitions", "Triggers", "Anchors", "Roles", "Options" });
+			CreateTabs(new string[] { "Play", "Animations", "Layers", "States", "Transitions", "Triggers", "Anchors", "Roles", "Messages", "Options" });
 
 			// myMenuElements.Clear();
 		}
@@ -686,16 +704,25 @@ namespace HaremLife
 		{
 			CreateMenuInfoOneLine("<size=30><b>Play Idle</b></size>", false);
 
-			if (!myDebugShowInfo.val)
-			{
+			// if (!myDebugShowInfo.val)
+			// {
 				if (myCurrentLayer != null && myCurrentLayer.myStates.Count > 0)
 					myPlayInfo.val = "AnimationPoser is playing animations.";
 				else
 					myPlayInfo.val = "You need to add some states and transitions before you can play animations.";
-			}
+			// }
 
 			CreateMenuInfo(myPlayInfo, 300, false);
 			CreateMenuToggle(myPlayPaused, false);
+
+			if(myCurrentAnimation != null) {
+				JSONStorableFloat animationSpeed = new JSONStorableFloat("AnimationSpeed", myCurrentAnimation.mySpeed, 0.0f, 10.0f, true, true);
+				animationSpeed.setCallbackFunction = (float v) => {
+					myCurrentAnimation.mySpeed = v;
+				};
+
+				CreateMenuSlider(animationSpeed, true);
+			}
 		}
 		private void CreateAnimationsMenu()
 		{
@@ -723,7 +750,6 @@ namespace HaremLife
 			CreateMenuButton("Add Animation", UIAddAnimation, false);
 
 			CreateMenuButton("Remove Animation", UIRemoveAnimation, false);
-
 		}
 
 		private void CreateLayersMenu()
@@ -753,6 +779,74 @@ namespace HaremLife
 			CreateMenuButton("Add Layer", UIAddLayer, false);
 			CreateMenuButton("Remove Layer", UIRemoveLayer, false);
 
+			CreateMenuInfoOneLine("<size=30><b>Merge Layers</b></size>", true);
+
+			List<string> layers = new List<string>();
+			if(myCurrentAnimation != null)
+			{
+				foreach (var layer in myCurrentAnimation.myLayers)
+					if(layer.Value != myCurrentLayer)
+						layers.Add(layer.Key);
+			}
+
+			layers.Sort();
+
+			JSONStorableStringChooser layerToMerge;
+			layerToMerge = new JSONStorableStringChooser("Layer", layers, "", "Layer");
+
+			CreateMenuPopup(layerToMerge, true);
+
+			CreateMenuButton("Merge Layer", () => {
+				if(layerToMerge.val == "") {
+					return;
+				}
+				Layer layer = myCurrentAnimation.myLayers[layerToMerge.val];
+				foreach(var s in layer.myStates) {
+					State state = s.Value;
+					state.myName = layer.myName + "#" + state.myName;
+					myCurrentLayer.myStates[state.myName] = state;
+					state.myLayer = myCurrentLayer;
+
+					List<ControlCapture> entries = state.myControlEntries.Keys.ToList();
+					for(int i=0; i<entries.Count; i++){
+						ControlCapture oldControlCapture = entries[i];
+						ControlCapture newControlCapture;
+						int j = myCurrentLayer.myControlCaptures.FindIndex(cc => cc.myName == oldControlCapture.myName);
+						if (j >= 0) {
+							newControlCapture = myCurrentLayer.myControlCaptures[j];
+						} else {
+							newControlCapture = new ControlCapture(this, oldControlCapture.myName);
+							myCurrentLayer.myControlCaptures.Add(newControlCapture);
+						}
+
+						ControlEntryAnchored entry = state.myControlEntries[oldControlCapture];
+						entry.myControlCapture = newControlCapture;
+						state.myControlEntries.Remove(oldControlCapture);
+						state.myControlEntries[newControlCapture] = entry;
+					}
+
+					List<MorphCapture> mEntries = state.myMorphEntries.Keys.ToList();
+					for(int i=0; i<mEntries.Count; i++){
+						MorphCapture oldMorphCapture = mEntries[i];
+						MorphCapture newMorphCapture;
+						int j = myCurrentLayer.myMorphCaptures.FindIndex(cc => cc.myMorph == oldMorphCapture.myMorph);
+						if (j >= 0) {
+							newMorphCapture = myCurrentLayer.myMorphCaptures[j];
+						} else {
+							newMorphCapture = new MorphCapture(this, oldMorphCapture.myGender, oldMorphCapture.myMorph);
+							myCurrentLayer.myMorphCaptures.Add(newMorphCapture);
+						}
+
+						float entry = state.myMorphEntries[oldMorphCapture];
+						state.myMorphEntries.Remove(oldMorphCapture);
+						state.myMorphEntries[newMorphCapture] = entry;
+					}
+				}
+				myCurrentAnimation.myLayers.Remove(layer.myName);
+
+				UIRefreshMenu();
+			}, true);
+
 			CreateMenuInfoOneLine("<size=30><b>Control Captures</b></size>", false);
 
 			FreeControllerV3[] atomControls = GetAllControllers();
@@ -778,7 +872,7 @@ namespace HaremLife
 				CreateMenuButton("Add Controller", UIAddControlCapture, false);
 			}
 
-			if (myControlCaptures.Count > 0)
+			if (myCurrentLayer.myControlCaptures.Count > 0)
 			{
 				CreateMenuTwinButton(
 					"Toggle Positions", UIToggleControlCapturePosition,
@@ -851,6 +945,14 @@ namespace HaremLife
 				else
 					label = "<color=#606060>"+gender+": " + m.resolvedRegionName + "</color>\n" + m.resolvedDisplayName;
 				CreateMenuLabelMXButton(label, mc.myApply, (bool v) => { mc.myApply = v; },	() => UIRemoveMorphCapture(mc), true);
+
+				JSONStorableFloat morphValue = new JSONStorableFloat(m.resolvedDisplayName, m.morphValue, -1.0f, 1.0f, true, true);
+				morphValue.constrained = false;
+
+				morphValue.setCallbackFunction = (float v) => {
+					m.morphValue = v;
+				};
+				CreateMenuSlider(morphValue, true);
 			}
 		}
 
@@ -886,7 +988,7 @@ namespace HaremLife
 			};
 			CreateMenuSlider(probability, false);
 
-			JSONStorableFloat duration = new JSONStorableFloat("Default Transition Duration", DEFAULT_TRANSITION_DURATION, 0.0f, 5.0f, true, true);
+			JSONStorableFloat duration = new JSONStorableFloat("Default Transition Duration", myGlobalDefaultTransitionDuration.val, 0.0f, 5.0f, true, true);
 			duration.valNoCallback = state.myDefaultDuration;
 			duration.setCallbackFunction = (float v) => {
 				State s = UIGetState();
@@ -895,7 +997,7 @@ namespace HaremLife
 			};
 			CreateMenuSlider(duration, false);
 
-			JSONStorableFloat easeInDuration = new JSONStorableFloat("Default Ease In Duration", DEFAULT_EASEIN_DURATION, 0.0f, 5.0f, true, true);
+			JSONStorableFloat easeInDuration = new JSONStorableFloat("Default Ease In Duration", myGlobalDefaultEaseInDuration.val, 0.0f, 5.0f, true, true);
 			easeInDuration.valNoCallback = state.myDefaultEaseInDuration;
 			easeInDuration.setCallbackFunction = (float v) => {
 				State s = UIGetState();
@@ -904,7 +1006,7 @@ namespace HaremLife
 			};
 			CreateMenuSlider(easeInDuration, false);
 
-			JSONStorableFloat easeOutDuration = new JSONStorableFloat("Default Ease Out Duration", DEFAULT_EASEOUT_DURATION, 0.0f, 5.0f, true, true);
+			JSONStorableFloat easeOutDuration = new JSONStorableFloat("Default Ease Out Duration", myGlobalDefaultEaseOutDuration.val, 0.0f, 5.0f, true, true);
 			easeOutDuration.valNoCallback = state.myDefaultEaseOutDuration;
 			easeOutDuration.setCallbackFunction = (float v) => {
 				State s = UIGetState();
@@ -931,8 +1033,8 @@ namespace HaremLife
 			};
 			CreateMenuToggle(isRootState, true);
 
-			JSONStorableFloat waitDurationMin = new JSONStorableFloat("Wait Duration Min", DEFAULT_WAIT_DURATION_MIN, 0.0f, 300.0f, true, true);
-			JSONStorableFloat waitDurationMax = new JSONStorableFloat("Wait Duration Max", DEFAULT_WAIT_DURATION_MAX, 0.0f, 300.0f, true, true);
+			JSONStorableFloat waitDurationMin = new JSONStorableFloat("Wait Duration Min", myGlobalDefaultWaitDurationMin.val, 0.0f, 300.0f, true, true);
+			JSONStorableFloat waitDurationMax = new JSONStorableFloat("Wait Duration Max", myGlobalDefaultWaitDurationMax.val, 0.0f, 300.0f, true, true);
 			waitDurationMin.valNoCallback = state.myWaitDurationMin;
 			waitDurationMax.valNoCallback = state.myWaitDurationMax;
 
@@ -1186,14 +1288,61 @@ namespace HaremLife
 				);
 			}
 
-			CreateMenuInfoOneLine("<size=30><b>Transition Settings</b></size>", true);
-
 			State targetState;
 			targetLayer.myStates.TryGetValue(myTargetStateList.val, out targetState);
 			Transition transition = state.getIncomingTransition(targetState);
 
 			if(transition != null) {
-				JSONStorableFloat transitionProbability = new JSONStorableFloat("Relative Transition Probability", transition.myProbability, 0.01f, 1.0f, true, true);
+				List<string> syncRoles = new List<string>();
+				foreach (var r in targetAnimation.myRoles)
+				{
+					syncRoles.Add(r.Value.myName);
+				}
+				syncRoles.Sort();
+
+				string selectedRoleName;
+				if (syncRoles.Count == 0)
+					selectedRoleName = "";
+				else if(mySyncRoleList != null && syncRoles.Contains(mySyncRoleList.val))
+					selectedRoleName = mySyncRoleList.val;
+				else
+					selectedRoleName = syncRoles[0];
+
+				mySyncRoleList = new JSONStorableStringChooser("Sync Role", syncRoles, selectedRoleName, "Sync Role");
+				mySyncRoleList.setCallbackFunction += (string v) => UIRefreshMenu();
+
+				CreateMenuSpacer(10, false);
+				CreateMenuInfoOneLine("<size=30><b>Messages</b></size>", false);
+				CreateMenuInfo("Use this to send messages to plugin instances in other person atoms when the transition finishes.", 100, false);
+
+				CreateMenuPopup(mySyncRoleList, false);
+
+				Role selectedRole;
+				targetAnimation.myRoles.TryGetValue(mySyncRoleList.val, out selectedRole);
+
+				if(mySyncRoleList.val != "") {
+					String messageString;
+					transition.myMessages.TryGetValue(selectedRole, out messageString);
+					if(messageString == null) {
+						messageString = "";
+					}
+					JSONStorableString message = new JSONStorableString("Message String",
+						messageString, (String mString) => {
+							if(mString == "") {
+								transition.myMessages.Remove(selectedRole);
+							} else {
+								transition.myMessages[selectedRole] = mString;
+							}
+							UIRefreshMenu();
+						}
+					);
+
+					CreateMenuTextInput("Message string", message, false);
+				}
+
+				CreateMenuInfoOneLine("<size=30><b>Transition Settings</b></size>", true);
+
+				JSONStorableFloat transitionProbability = new JSONStorableFloat("Relative Transition Probability", transition.myProbability, 0.00f, 1.0f, true, true);
 				transitionProbability.valNoCallback = transition.myProbability;
 				transitionProbability.setCallbackFunction = (float v) => {
 					Transition t = UIGetTransition();
@@ -1210,6 +1359,14 @@ namespace HaremLife
 						t.myDuration = v;
 				};
 				CreateMenuSlider(transitionDuration, true);
+
+				JSONStorableFloat transitionDurationNoise = new JSONStorableFloat("Transition Duration Noise", transition.myDurationNoise, 0.00f, 5.0f, true, true);
+				transitionDurationNoise.setCallbackFunction = (float v) => {
+					Transition t = UIGetTransition();
+					if (t != null)
+						t.myDurationNoise = v;
+				};
+				CreateMenuSlider(transitionDurationNoise, true);
 
 				JSONStorableFloat easeInDuration = new JSONStorableFloat("EaseIn Duration", transition.myEaseInDuration, 0.0f, 5.0f, true, true);
 				easeInDuration.valNoCallback = transition.myEaseInDuration;
@@ -1230,26 +1387,6 @@ namespace HaremLife
 				CreateMenuSlider(easeOutDuration, true);
 
 				CreateMenuInfo("Use the following to sync other layers on target state arrival.", 80, true);
-
-				List<string> syncInstances = new List<string>();
-				foreach (var atom in SuperController.singleton.GetAtoms())
-				{
-					if (atom == null) continue;
-					var storableId = atom.GetStorableIDs().FirstOrDefault(id => id.EndsWith("HaremLife.AnimationPoser"));
-					if (storableId == null) continue;
-					MVRScript storable = atom.GetStorableByID(storableId) as MVRScript;
-					if (storable == null) continue;
-					// if (ReferenceEquals(storable, _plugin)) continue;
-					if (!storable.enabled) continue;
-					syncInstances.Add(storable.name);
-					storable.SendMessage(nameof(AnimationPoser.GetCalled), "");
-				}
-				syncInstances.Sort();
-
-				mySyncInstanceList = new JSONStorableStringChooser("Sync Instance", syncInstances, "", "Sync Instance");
-				mySyncInstanceList.setCallbackFunction += (string v) => UIRefreshMenu();
-
-				CreateMenuPopup(mySyncInstanceList, true);
 
 				List<string> syncLayers = new List<string>();
 				foreach (var l in transition.myTargetState.myAnimation.myLayers)
@@ -1374,7 +1511,7 @@ namespace HaremLife
 
 			CreateMenuSpacer(132, true);
 			List<string> roles = new List<string>();
-			foreach (var r in myCurrentLayer.myRoles)
+			foreach (var r in myCurrentAnimation.myRoles)
 			{
 				roles.Add(r.Value.myName);
 			}
@@ -1412,7 +1549,7 @@ namespace HaremLife
 			people.Sort();
 
 			Role selectedRole;
-			myCurrentLayer.myRoles.TryGetValue(myRoleList.val, out selectedRole);
+			myCurrentAnimation.myRoles.TryGetValue(myRoleList.val, out selectedRole);
 
 			if(selectedRole != null) {
 				String selectedPersonName;
@@ -1439,9 +1576,9 @@ namespace HaremLife
 				roleName, (String name) => {
 					selectedRole.myName = name;
 					myRoleList.val = name;
-					Role roleToRename = myCurrentLayer.myRoles[roleName];
-					myCurrentLayer.myRoles.Remove(roleName);
-					myCurrentLayer.myRoles.Add(name, roleToRename);
+					Role roleToRename = myCurrentAnimation.myRoles[roleName];
+					myCurrentAnimation.myRoles.Remove(roleName);
+					myCurrentAnimation.myRoles.Add(name, roleToRename);
 					UIRefreshMenu();
 				}
 			);
@@ -1456,7 +1593,7 @@ namespace HaremLife
 		private void UIAddRole() {
 			String name = FindNewRoleName();
 			Role role = new Role(name);
-			myCurrentLayer.myRoles[name] = role;
+			myCurrentAnimation.myRoles[name] = role;
 			myRoleList.val = name;
 			UIRefreshMenu();
 		}
@@ -1465,54 +1602,380 @@ namespace HaremLife
 			for (int i=1; i<1000; ++i)
 			{
 				string name = "Role#" + i;
-				if (!myCurrentLayer.myRoles.ContainsKey(name))
+				if (!myCurrentAnimation.myRoles.ContainsKey(name))
 					return name;
 			}
 			SuperController.LogError("AnimationPoser: Too many roles!");
 			return null;
 		}
+		private void CreateMessagesMenu()
+		{
+			CreateMenuInfoOneLine("<size=30><b>Messages</b></size>", false);
+
+			CreateMenuInfo("Use this to define special transitions that only take place when a given message is received.", 100, false);
+
+			List<string> messages = new List<string>();
+			foreach (var m in myCurrentLayer.myMessages)
+			{
+				Message message = m.Value;
+				messages.Add(message.myName);
+			}
+			messages.Sort();
+
+			string selectedMessageName;
+			if (messages.Count == 0)
+				selectedMessageName = "";
+			else if(myMessageList != null && messages.Contains(myMessageList.val))
+				selectedMessageName = myMessageList.val;
+			else
+				selectedMessageName = messages[0];
+
+			myMessageList = new JSONStorableStringChooser("Message", messages, selectedMessageName, "Message");
+			myMessageList.setCallbackFunction += (string v) => UIRefreshMenu();
+
+			CreateMenuPopup(myMessageList, false);
+
+			CreateMenuButton("Add Message", UIAddMessage, false);
+
+			Message selectedMessage;
+			myCurrentLayer.myMessages.TryGetValue(selectedMessageName, out selectedMessage);
+
+			if(selectedMessage == null) {
+				return;
+			}
+
+			JSONStorableString messageName = new JSONStorableString("Message Name",
+				selectedMessage.myName, (String newName) => {
+					myCurrentLayer.myMessages.Remove(selectedMessage.myName);
+					selectedMessage.myName = newName;
+					myCurrentLayer.myMessages[newName] = selectedMessage;
+					UIRefreshMenu();
+				}
+			);
+
+			JSONStorableString messageString = new JSONStorableString("Message String",
+				selectedMessage.myMessageString, (String newString) => {
+					selectedMessage.myMessageString = newString;
+					UIRefreshMenu();
+				}
+			);
+
+			CreateMenuTextInput("Name", messageName, false);
+			CreateMenuTextInput("String", messageString, false);
+
+			List<string> availableAnimations = new List<string>();
+			foreach (var a in myAnimations)
+			{
+				Animation target = a.Value;
+				availableAnimations.Add(target.myName);
+			}
+			availableAnimations.Sort();
+
+			string selectedTargetAnimation;
+			if (availableAnimations.Count == 0)
+				selectedTargetAnimation= "";
+			else if (myTargetAnimationList == null || !availableAnimations.Contains(myTargetAnimationList.val))
+				selectedTargetAnimation = myCurrentAnimation.myName;
+			else
+				selectedTargetAnimation = myTargetAnimationList.val;
+
+			myTargetAnimationList = new JSONStorableStringChooser("Target Animation", availableAnimations, selectedTargetAnimation, "Target Animation");
+			myTargetAnimationList.setCallbackFunction += (string v) => UIRefreshMenu();
+
+			Animation targetAnimation;
+			if(!myAnimations.TryGetValue(myTargetAnimationList.val, out targetAnimation)){
+				return;
+			};
+
+			Layer targetLayer;
+			List<string> availableLayers = new List<string>();
+			if(targetAnimation != myCurrentAnimation) {
+				foreach (var l in targetAnimation.myLayers)
+				{
+					Layer target = l.Value;
+					availableLayers.Add(target.myName);
+				}
+				availableLayers.Sort();
+
+				string selectedTargetLayer;
+				if (availableLayers.Count == 0)
+					selectedTargetLayer = "";
+				else if (myTargetLayerList == null || !availableLayers.Contains(myTargetLayerList.val))
+					selectedTargetLayer = myCurrentLayer.myName;
+				else
+					selectedTargetLayer = myTargetLayerList.val;
+
+				myTargetLayerList = new JSONStorableStringChooser("Target Layer", availableLayers, selectedTargetLayer, "Target Layer");
+				myTargetLayerList.setCallbackFunction += (string v) => UIRefreshMenu();
+
+				if(!targetAnimation.myLayers.TryGetValue(myTargetLayerList.val, out targetLayer))
+					return;
+			} else
+				targetLayer = myCurrentLayer;
+
+			List<string> availableSourceStates = new List<string>();
+			foreach (var s in myCurrentLayer.myStates)
+			{
+				State source = s.Value;
+				bool isAvailable = true;
+				Dictionary<string, Message> equalMessages = new Dictionary<string, Message>();
+				foreach(var m in myCurrentLayer.myMessages) {
+					if(m.Value.myName == selectedMessage.myName)
+						continue;
+
+					if(m.Value.myMessageString == selectedMessage.myMessageString) {
+						equalMessages[m.Key] = m.Value;
+					}
+				}
+				foreach(var m in equalMessages) {
+					Message message = m.Value;
+					foreach(var ss in message.mySourceStates) {
+						if (source == ss.Value)
+							isAvailable = false;
+					}
+				}
+				if(selectedMessage != null) {
+					foreach(var ss in selectedMessage.mySourceStates) {
+						if(ss.Value == source) {
+							isAvailable = false;
+						}
+					}
+					if(selectedMessage.myTargetState == source) {
+						isAvailable = false;
+					}
+				}
+				if(isAvailable) {
+					availableSourceStates.Add(source.myName);
+				}
+			}
+			availableSourceStates.Sort();
+
+			string selectedSourceState;
+			if (availableSourceStates.Count == 0)
+				selectedSourceState = "";
+			else if (mySourceStateList == null || !availableSourceStates.Contains(mySourceStateList.val))
+				selectedSourceState = availableSourceStates[0];
+			else
+				selectedSourceState = mySourceStateList.val;
+
+			mySourceStateList = new JSONStorableStringChooser("Source State", availableSourceStates, selectedSourceState, "Source State");
+			mySourceStateList.setCallbackFunction += (string v) => UIRefreshMenu();
+
+			List<string> availableTargetStates = new List<string>();
+			foreach (var s in targetLayer.myStates)
+			{
+				State target = s.Value;
+				if (selectedMessage != null && 
+					targetLayer == myCurrentLayer &&
+					selectedMessage.mySourceStates.Keys.ToList().Contains(target.myName))
+					continue;
+
+				availableTargetStates.Add(target.myName);
+			}
+			availableTargetStates.Sort();
+
+			string selectedTargetState;
+			if (availableTargetStates.Count == 0)
+				selectedTargetState = "";
+			else if (myTargetStateList == null || !availableTargetStates.Contains(myTargetStateList.val))
+				selectedTargetState = availableTargetStates[0];
+			else
+				selectedTargetState = myTargetStateList.val;
+
+			myTargetStateList = new JSONStorableStringChooser("Target State", availableTargetStates, selectedTargetState, "Target State");
+			myTargetStateList.setCallbackFunction += (string v) => UIRefreshMenu();
+
+			if (availableSourceStates.Count > 0)
+			{
+				CreateMenuPopup(mySourceStateList, false);
+				CreateMenuButton("Add Source State", () => {
+					State s = myCurrentLayer.myStates[mySourceStateList.val];
+					selectedMessage.mySourceStates[s.myName] = s;
+					UIRefreshMenu();
+				}, false);
+			}
+			foreach(var s in selectedMessage.mySourceStates) {
+				CreateMenuLabelXButton(
+					s.Value.myName,
+					() => {
+						selectedMessage.mySourceStates.Remove(s.Value.myName);
+						UIRefreshMenu();
+					}, false
+				);
+			}
+			if(availableAnimations.Count > 0) {
+				CreateMenuPopup(myTargetAnimationList, false);
+			}
+			if(availableLayers.Count > 0) {
+				CreateMenuPopup(myTargetLayerList, false);
+			}
+			if (availableTargetStates.Count > 0)
+			{
+				if(selectedMessage.myTargetState == null) {
+					CreateMenuPopup(myTargetStateList, false);
+					if(myTargetStateList.val != "") {
+						CreateMenuButton("Add Target State", () => {
+							State targetState = myCurrentLayer.myStates[myTargetStateList.val];
+							selectedMessage.myTargetState = targetState;
+							UIRefreshMenu();
+						}, false);
+					}
+				}
+				else {
+					CreateMenuLabelXButton(
+						selectedMessage.myTargetState.myName,
+						() => {
+							selectedMessage.myTargetState = null;
+							UIRefreshMenu();
+						}, false
+					);
+				}
+			}
+			else
+			{
+				CreateMenuInfo("You need to add a second state before you can add transitions.", 100, false);
+				return;
+			}
+
+
+			CreateMenuInfoOneLine("<size=30><b>Transition Settings</b></size>", true);
+
+			JSONStorableFloat transitionDuration = new JSONStorableFloat("Transition Duration", selectedMessage.myDuration, 0.01f, 5.0f, true, true);
+			transitionDuration.valNoCallback = selectedMessage.myDuration;
+			transitionDuration.setCallbackFunction = (float v) => {
+				selectedMessage.myDuration = v;
+			};
+			CreateMenuSlider(transitionDuration, true);
+
+			JSONStorableFloat transitionDurationNoise = new JSONStorableFloat("Transition Duration Noise", selectedMessage.myDurationNoise, 0.00f, 5.0f, true, true);
+			transitionDurationNoise.setCallbackFunction = (float v) => {
+				Transition t = UIGetTransition();
+				if (t != null)
+					t.myDurationNoise = v;
+			};
+			CreateMenuSlider(transitionDurationNoise, true);
+
+			JSONStorableFloat easeInDuration = new JSONStorableFloat("EaseIn Duration", selectedMessage.myEaseInDuration, 0.0f, 5.0f, true, true);
+			easeInDuration.valNoCallback = selectedMessage.myEaseInDuration;
+			easeInDuration.setCallbackFunction = (float v) => {
+				selectedMessage.myEaseInDuration = v;
+			};
+			CreateMenuSlider(easeInDuration, true);
+
+			JSONStorableFloat easeOutDuration = new JSONStorableFloat("EaseOut Duration", selectedMessage.myEaseOutDuration, 0.0f, 5.0f, true, true);
+			easeOutDuration.valNoCallback = selectedMessage.myEaseOutDuration;
+			easeOutDuration.setCallbackFunction = (float v) => {
+				selectedMessage.myEaseOutDuration = v;
+			};
+			CreateMenuSlider(easeOutDuration, true);
+
+			CreateMenuInfo("Use the following to sync other layers on target state arrival.", 80, true);
+
+			List<string> syncLayers = new List<string>();
+			foreach (var l in selectedMessage.myTargetState.myAnimation.myLayers)
+			{
+				Layer target = l.Value;
+				if(target != selectedMessage.myTargetState.myLayer)
+					syncLayers.Add(target.myName);
+			}
+			syncLayers.Sort();
+
+			if (syncLayers.Count == 0) {
+				return;
+			}
+
+			string selectedSyncLayer;
+			if (mySyncLayerList == null || !syncLayers.Contains(mySyncLayerList.val))
+				selectedSyncLayer = syncLayers[0];
+			else
+				selectedSyncLayer = mySyncLayerList.val;
+
+			mySyncLayerList = new JSONStorableStringChooser("Sync Layer", syncLayers, selectedSyncLayer, "Sync Layer");
+			mySyncLayerList.setCallbackFunction += (string v) => UIRefreshMenu();
+
+			CreateMenuPopup(mySyncLayerList, true);
+
+			Layer syncLayer;
+			if(!selectedMessage.myTargetState.myAnimation.myLayers.TryGetValue(mySyncLayerList.val, out syncLayer)){
+				return;
+			};
+
+			if(selectedMessage.mySyncTargets.ContainsKey(syncLayer)) {
+				CreateMenuLabelXButton(selectedMessage.mySyncTargets[syncLayer].myName, () => {
+					Layer l;
+					if(!selectedMessage.myTargetState.myAnimation.myLayers.TryGetValue(mySyncLayerList.val, out l)){
+						return;
+					};
+
+					selectedMessage.mySyncTargets.Remove(l);
+
+					UIRefreshMenu();
+				}, true);
+			} else {
+				List<string> syncStates = new List<string>();
+				foreach (var s in syncLayer.myStates)
+				{
+					State target = s.Value;
+					syncStates.Add(target.myName);
+				}
+				syncStates.Sort();
+
+				if (syncStates.Count == 0) {
+					return;
+				}
+
+				string selectedSyncState;
+				if (mySyncStateList == null || !syncStates.Contains(mySyncStateList.val))
+					selectedSyncState = syncStates[0];
+				else
+					selectedSyncState = mySyncStateList.val;
+
+				mySyncStateList = new JSONStorableStringChooser("Sync State", syncStates, selectedSyncState, "Sync State");
+				mySyncStateList.setCallbackFunction += (string v) => UIRefreshMenu();
+
+				CreateMenuPopup(mySyncStateList, true);
+				CreateMenuButton("Sync State", () => {
+					Layer l;
+					if(!selectedMessage.myTargetState.myAnimation.myLayers.TryGetValue(mySyncLayerList.val, out l)){
+						return;
+					};
+
+					State s;
+					if(!syncLayer.myStates.TryGetValue(mySyncStateList.val, out s)){
+						return;
+					};
+
+					selectedMessage.mySyncTargets[l] = s;
+
+					UIRefreshMenu();
+				}, true);
+			}
+		}
 
 		private void CreateOptionsMenu()
 		{
 			CreateMenuInfoOneLine("<size=30><b>General Options</b></size>", false);
-			CreateMenuToggle(myOptionsDefaultToWorldAnchor, false);
+			// CreateMenuToggle(myOptionsDefaultToWorldAnchor, false);
 
-			CreateMenuInfoOneLine("<size=30><b>Debug Options</b></size>", false);
-			CreateMenuInfoOneLine("<color=#ff0000><b>Can cause performance issues!</b></color>", false);
+			CreateMenuSlider(myGlobalDefaultTransitionDuration, false);
+			CreateMenuSlider(myGlobalDefaultEaseInDuration, false);
+			CreateMenuSlider(myGlobalDefaultEaseOutDuration, false);
+			CreateMenuSlider(myGlobalDefaultWaitDurationMin, false);
+			CreateMenuSlider(myGlobalDefaultWaitDurationMax, false);
 
-			CreateMenuToggle(myDebugShowInfo, false);
-			if (myDebugShowInfo.val)
-				CreateMenuInfo(myPlayInfo, 300, false);
+			// CreateMenuInfoOneLine("<size=30><b>Debug Options</b></size>", false);
+			// CreateMenuInfoOneLine("<color=#ff0000><b>Can cause performance issues!</b></color>", false);
 
-			CreateMenuToggle(myDebugShowPaths, false);
-			CreateMenuToggle(myDebugShowTransitions, false);
-			CreateMenuToggle(myDebugShowSelectedOnly, false);
+			// CreateMenuToggle(myDebugShowInfo, false);
+			// if (myDebugShowInfo.val)
+				// CreateMenuInfo(myPlayInfo, 300, false);
 
-			if (myDebugShowPaths.val)
-				CreateMenuButton("Log Path Stats", DebugLogStats, false);
+			// CreateMenuToggle(myDebugShowPaths, false);
+			// CreateMenuToggle(myDebugShowTransitions, false);
+			// CreateMenuToggle(myDebugShowSelectedOnly, false);
 
-
-			CreateMenuInfoOneLine("<size=30><b>Debug Color Legend</b></size>", true);
-			CreateMenuInfoWhiteBackground(
-				"<b>Regular States + Paths:\n" +
-				"<color=#4363d8>    Group None\n</color>" +
-				"<color=#e6194B>    Group A\n</color>" +
-				"<color=#3cb44b>    Group B\n</color>" +
-				"<color=#ffe119>    Group C\n</color>" +
-				"<color=#f032e6>    Group D\n</color>" +
-				"<color=#42d4f4>    Group E\n</color>" +
-				"<color=#f58231>    Group F\n</color>" +
-				"<color=#469990>    Group G\n</color>" +
-				"<color=#9A6324>    Group H\n</color>" +
-				"<color=#bfef45>    Group I\n</color>" +
-				"<color=#911eb4>    Group J\n</color>" +
-				"<color=#000075>    Group K\n</color>" +
-				"<color=#808000>    Group L\n</color>" +
-				"Control Points:\n<color=#a9a9a9>    grey + smaller size\n</color>" +
-				"Intermediate Points:\n<color=#a9a9a9>    grey + normal size\n</color>" +
-				"Transitions:\n<color=#a9a9a9>    grey lines\n</color></b>",
-				650, true
-			);
+			// if (myDebugShowPaths.val)
+			// 	CreateMenuButton("Log Path Stats", DebugLogStats, false);
 		}
 
 		// =======================================================================================
@@ -1531,45 +1994,41 @@ namespace HaremLife
 		{
 			JSONClass jc = LoadJSON(url).AsObject;
 			if (jc != null)
-				UIRefreshMenu();
 				LoadAnimations(jc);
 
 			if (myCurrentState != null)
 			{
 				myMainState.valNoCallback = myCurrentState.myName;
-				myMainState.setCallbackFunction(myCurrentState.myName);
+				// myMainState.setCallbackFunction(myCurrentState.myName);
 			}
 			if (myCurrentLayer != null)
 			{
 				myMainLayer.valNoCallback = myCurrentLayer.myName;
-				myMainLayer.setCallbackFunction(myCurrentLayer.myName);
+				// myMainLayer.setCallbackFunction(myCurrentLayer.myName);
 			}
 			if (myCurrentAnimation != null)
 			{
 				myMainAnimation.valNoCallback = myCurrentAnimation.myName;
-				myMainAnimation.setCallbackFunction(myCurrentAnimation.myName);
+				// myMainAnimation.setCallbackFunction(myCurrentAnimation.myName);
 			}
-			else{
-				UIRefreshMenu();
-			}
+			UIRefreshMenu();
 		}
 
 		private void UILoadJSON(string url)
 		{
 			JSONClass jc = LoadJSON(url).AsObject;
-			if (jc != null)
-				UIRefreshMenu();
-				LoadLayer(jc, false, true);
+			if (jc != null) {
+				LoadLayer(jc, true);
+				LoadTransitions(jc);
+				LoadMessages(jc);
+			}
 
 			if (myCurrentState != null)
 			{
 				myMainState.valNoCallback = myCurrentState.myName;
-				myMainState.setCallbackFunction(myCurrentState.myName);
+				// myMainState.setCallbackFunction(myCurrentState.myName);
 			}
-			else
-			{
-				UIRefreshMenu();
-			}
+			UIRefreshMenu();
 		}
 
 		private void UISaveAnimationsJSONDialog()
@@ -1869,6 +2328,16 @@ namespace HaremLife
 			myIsAddingNewState = false;
 			UIRefreshMenu();
 		}
+		private void UIAddMessage()
+		{
+			string name = FindNewMessageName();
+			if (name == null)
+				return;
+
+			myCurrentLayer.myMessages[name] = new Message(name);
+			myMessageList.val = name;
+			UIRefreshMenu();
+		}
 
 		private string FindNewAnimationName()
 		{
@@ -1903,6 +2372,17 @@ namespace HaremLife
 					return name;
 			}
 			SuperController.LogError("AnimationPoser: Too many states!");
+			return null;
+		}
+		private string FindNewMessageName()
+		{
+			for (int i=1; i<1000; ++i)
+			{
+				string name = "Message#" + i;
+				if (!myCurrentLayer.myMessages.ContainsKey(name))
+					return name;
+			}
+			SuperController.LogError("AnimationPoser: Too many messages!");
 			return null;
 		}
 
@@ -1951,6 +2431,8 @@ namespace HaremLife
 			animations.Sort();
 			if(animations.Count > 0) {
 				myMainAnimation.val = animations[0];
+			} else {
+				myMainAnimation.val = "";
 			}
 
 			UIRefreshMenu();
@@ -2015,6 +2497,20 @@ namespace HaremLife
 			myCurrentAnimation.myName = name;
 			UIRefreshMenu();
 		}
+		private void UIRenameMessage(string name)
+		{
+			if (myCurrentAnimation == null)
+				return;
+			if (myCurrentAnimation.myName == name)
+				return;
+
+			myAnimations.Remove(myCurrentAnimation.myName);
+
+			myAnimations.Add(name, myCurrentAnimation);
+			myCurrentAnimation.myName = name;
+			UIRefreshMenu();
+		}
+
 
 		private void UIRenameLayer(string name)
 		{
@@ -2155,6 +2651,7 @@ namespace HaremLife
 		private void UIRemoveTransition(State source, State target)
 		{
 			source.removeTransition(target);
+			target.removeTransition(source);
 			UIRefreshMenu();
 		}
 
@@ -2324,7 +2821,8 @@ namespace HaremLife
 
 		private void CreateMenuSlider(JSONStorableFloat storable, bool rightSide)
 		{
-			CreateSlider(storable, rightSide);
+			UIDynamicSlider slider = CreateSlider(storable, rightSide);
+			slider.rangeAdjustEnabled = true;
 			myMenuElements.Add(storable);
 		}
 

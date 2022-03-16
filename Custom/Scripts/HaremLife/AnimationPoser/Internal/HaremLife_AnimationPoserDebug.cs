@@ -324,9 +324,9 @@ namespace HaremLife
 			int numSamples = DISTANCE_SAMPLES[entryCount];
 			int numLines = numSamples + 1;
 			float numLinesF = (float)numLines;
-			for (int i=0; i<myControlCaptures.Count; ++i)
+			for (int i=0; i<myCurrentLayer.myControlCaptures.Count; ++i)
 			{
-				ControlCapture cc = myControlCaptures[i];
+				ControlCapture cc = myCurrentLayer.myControlCaptures[i];
 				for (int j=0; j<entryCount; ++j)
 				{
 					ControlEntryAnchored ce;
@@ -434,9 +434,9 @@ namespace HaremLife
 			bool oneWay = !target.isReachable(source);
 			Color32 color = oneWay ? DEBUG_TRANSITION_ONEWAY_COLOR : DEBUG_TRANSITION_COLOR;
 
-			for (int j=0; j<myControlCaptures.Count; ++j)
+			for (int j=0; j<myCurrentLayer.myControlCaptures.Count; ++j)
 			{
-				ControlCapture cc = myControlCaptures[j];
+				ControlCapture cc = myCurrentLayer.myControlCaptures[j];
 				ControlEntryAnchored ceSource;
 				ControlEntryAnchored ceTarget;
 				if (!source.myControlEntries.TryGetValue(cc, out ceSource))
