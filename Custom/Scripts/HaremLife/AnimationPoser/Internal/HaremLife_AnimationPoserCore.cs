@@ -376,10 +376,9 @@ namespace HaremLife
 						if (myClock >= myDuration + myTransition.myDuration + myTransitionNoise)
 							ArriveAtState();
 					}
-				} 
-				// if no transition (updates position relative to anchor)
-				// if (myTransition == null)
-				// 	UpdateState();
+					// if (myTransition == null)
+						// UpdateState();
+				}
 			}
 
 			public void UpdateCurve(float t) {
@@ -517,7 +516,6 @@ namespace HaremLife
 		}
 		private class Role : AnimationObject
 		{
-			public String myName;
 			public Atom myPerson;
 
 			public Role(string name) : base(name) {
