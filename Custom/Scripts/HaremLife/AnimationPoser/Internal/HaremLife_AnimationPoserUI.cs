@@ -498,12 +498,14 @@ namespace HaremLife
 			else if (!options.Contains(myMainSelection.val))
 			{
 				myMainSelection.valNoCallback = options[0];
-				AnimationObject selection;
-				myChoices.TryGetValue(myMainSelection.val, out selection);
-				if(objectType == "animation")
-					SetAnimation(selection as Animation);
-				else if (objectType == "layer")
-					SetLayer(selection as Layer);
+				if (objectType!="state") {
+					AnimationObject selection;
+					myChoices.TryGetValue(myMainSelection.val, out selection);
+					if(objectType == "animation")
+						SetAnimation(selection as Animation);
+					else if (objectType == "layer")
+						SetLayer(selection as Layer);
+				}
 				UIBlendToState();
 			}
 		}
@@ -1496,29 +1498,30 @@ namespace HaremLife
 				CreateMenuPopup(myPersonList, true);
 			}
 
-			String roleName = "";
-			if(selectedRole != null)
+			string roleName = null;
+			if(selectedRole == null)
+				roleName = "";
+			else
 				roleName = selectedRole.myName;
 			JSONStorableString role = new JSONStorableString("Role Name",
-				roleName, (String name) => {
-					selectedRole.myName = name;
-					myRoleList.val = name;
-					Role roleToRename = myCurrentAnimation.myRoles[roleName];
-					myCurrentAnimation.myRoles.Remove(roleName);
-					myCurrentAnimation.myRoles.Add(name, roleToRename);
+				roleName, (String newName) => {
+					myCurrentAnimation.myRoles.Remove(selectedRole.myName);
+					selectedRole.myName = newName;
+					myCurrentAnimation.myRoles.Add(newName, selectedRole);
 					UIRefreshMenu();
 				}
 			);
 
-			CreateMenuTextInput("Role Name", role, false);
-
 			CreateMenuButton("Add Role", UIAddRole, false);
+
+			CreateMenuTextInput("Role Name", role, false);
 
 			CreateMenuButton("Remove Role", UIRemoveRole, false);
 		}
 
 		private void UIAddRole() {
 			String name = FindNewName("Role", "roles", myCurrentAnimation.myRoles.Keys.ToList());
+			SuperController.LogError("New Name: " + name);
 			Role role = new Role(name);
 			myCurrentAnimation.myRoles[name] = role;
 			myRoleList.val = name;
@@ -2126,7 +2129,7 @@ namespace HaremLife
 			if (source == null)
 				return;
 
-			string name = FindNewName("Message", "messages", new List<string>(myMessages.Keys));
+			string name = FindNewName("State", "states", new List<string>(myMessages.Keys));
 			if (name == null)
 				return;
 
