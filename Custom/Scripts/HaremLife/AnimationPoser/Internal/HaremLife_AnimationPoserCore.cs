@@ -194,6 +194,27 @@ namespace HaremLife
 			}
 		}
 
+		private static void SetAnimation(Animation animation, Transition transition)
+		{
+			myCurrentAnimation = animation;
+
+			List<string> layers = animation.myLayers.Keys.ToList();
+			layers.Sort();
+			if(layers.Count > 0) {
+				Layer layer;
+				foreach (var layerKey in layers) {
+					myCurrentAnimation.myLayers.TryGetValue(layerKey, out layer);
+					if (layer.myStates.ContainsKey(transition.myTargetState.myName))
+						SetLayer(layer, transition.myTargetState);
+					else if (transition.mySyncTargets.ContainsKey(layer))
+						SetLayer(layer, transition.mySyncTargets[layer]);
+					else
+						SetLayer(layer);
+				}
+			}
+			myMainAnimation.valNoCallback = myCurrentAnimation.myName;
+		}
+
 		private static void SetLayer(Layer layer)
 		{
 			myCurrentLayer = layer;
@@ -205,6 +226,13 @@ namespace HaremLife
 				layer.myCurrentState = state;
 				layer.SetBlendTransition(state);
 			}
+		}
+
+		private static void SetLayer(Layer layer, State state)
+		{
+			myCurrentLayer = layer;
+			layer.myCurrentState = state;
+			layer.SetBlendTransition(state);
 		}
 
 		private void setCaptureDefaults(State state, State oldState)
@@ -390,8 +418,6 @@ namespace HaremLife
 					} else {
 						UpdateState();
 					}
-					// if (myTransition == null)
-						// UpdateState();
 				}
 			}
 
@@ -480,7 +506,8 @@ namespace HaremLife
 				}
 
 				if(transition.myTargetState.myAnimation() != transition.mySourceState.myAnimation()) {
-					TransitionToAnotherAnimation(transition);
+					SetAnimation(transition.myTargetState.myAnimation(), transition);
+					// TransitionToAnotherAnimation(transition);
 				} else {
 					List<State> stateChain = new List<State>(2);
 					stateChain.Add(sourceState);
@@ -515,13 +542,7 @@ namespace HaremLife
 				State targetState = transition.myTargetState;
 				Animation animation = targetState.myAnimation();
 				Layer targetLayer = targetState.myLayer;
-				SetAnimation(animation);
-				targetLayer.ArriveFromAnotherAnimation(transition, targetState);
-				foreach(var sc in transition.mySyncTargets) {
-					Layer syncLayer = sc.Key;
-					State syncState = sc.Value;
-					syncLayer.ArriveFromAnotherAnimation(transition, syncState);
-				}
+				SetAnimation(animation, transition);
 
 				// myMainAnimation.valNoCallback = myCurrentAnimation.myName;
 				// myMainLayer.valNoCallback = myCurrentLayer.myName;
