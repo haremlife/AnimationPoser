@@ -284,6 +284,8 @@ namespace HaremLife
 			myAnimations.Clear();
 			int version = jc["Info"].AsObject["Version"].AsInt;
 
+			LoadRoles(jc);
+
 			// load captures
 			JSONArray anims = jc["Animations"].AsArray;
 			for (int l=0; l<anims.Count; ++l)
@@ -346,7 +348,6 @@ namespace HaremLife
 				myMainState.valNoCallback = myCurrentState.myName;
 				myMainState.setCallbackFunction(myCurrentState.myName);
 			}
-			LoadRoles(jc);
 			LoadMessages(jc);
 		}
 

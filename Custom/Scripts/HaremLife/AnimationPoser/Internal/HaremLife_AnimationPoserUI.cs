@@ -1428,12 +1428,7 @@ namespace HaremLife
 
 			CreateMenuInfoOneLine("<size=30><b>External Triggers</b></size>", true);
 			CreateMenuInfoScrolling(
-				"<i>AnimationPoser</i> exposes some external trigger connections, allowing you to control transitions with external logic or syncing multiple <i>AnimationPosers</i>:\n\n" +
-				"<b>SwitchState</b>: Set to a state name to transition directly to that <i>State</i>.\n\n" +
-				"<b>SetStateMask</b>: Exclude a number of <i>StateGroups</i> from possible transitions. For example set to <i>ABC</i> to allow only states of groups A,B and C. Set to <i>!ABC</i> to " +
-				"allow only states NOT in groups A, B and C, which is equivalent to setting it to <i>DEFGHN</i>. Letter <i>N</i> stands for the 'None' group. Setting to <i>Clear</i> disables the state mask. Lowercase letters are allowed, too. If <i>AnimationPoser</i> happens to be in an ongoing transition at the moment of calling <i>SetStateMask</i>, it will wait for reaching a <i>Regular State</i> before triggering a transition to a valid state that matches the new mask.\n\n" +
-				"<b>PartialStateMask</b>: Works the same way as <i>SetStateMask</i>, except only those groups explicitly mentioned are changed. Also you can chain multiple statements by separating them with space, semicolon or pipe characters. For example: <i>AB|!CD</i> to enable A and B, while disabling C and D.\n\n" +
-				"<b>TriggerSync</b>: If <i>Wait for TriggerSync</i> is enabled for a <i>State</i>, it will, after its duration finished, wait for this to be called before transitioning to the next <i>State</i>.",
+				"AnimationPoser exposes the SendMessage trigger, which allows you to send a message to the plugin instace, which can be handled with a message receiver in the Messages tab.\n\n",
 				800, true
 			);
 		}

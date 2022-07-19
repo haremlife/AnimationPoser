@@ -127,7 +127,6 @@ namespace HaremLife
 					foreach (var l in myCurrentAnimation.myLayers) {
 						State currentState = l.Value.myCurrentState;
 						if(message.mySourceStates.Values.ToList().Contains(currentState)) {
-							Transition transition = new Transition(currentState, message);
 							myCurrentLayer.SetBlendTransition(message.myTargetState);
 						}
 					}
@@ -470,7 +469,6 @@ namespace HaremLife
 					}
 				}
 				SetNextTransition();
-				myClock = myDuration;
 			}
 
 			public void SetNextTransition() {
@@ -489,6 +487,8 @@ namespace HaremLife
 				} else {
 					myTransition = null;
 				}
+
+				myClock = myDuration;
 			}
 
 			public void SetTransition()
