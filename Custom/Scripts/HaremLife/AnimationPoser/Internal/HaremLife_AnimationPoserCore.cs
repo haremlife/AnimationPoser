@@ -518,8 +518,8 @@ namespace HaremLife
 				}
 
 				if(transition.myTargetState.myAnimation() != transition.mySourceState.myAnimation()) {
-					SetAnimation(transition.myTargetState.myAnimation(), transition);
-					// TransitionToAnotherAnimation(transition);
+					// SetAnimation(transition.myTargetState.myAnimation(), transition);
+					TransitionToAnotherAnimation(transition);
 				} else {
 					List<State> stateChain = new List<State>(2);
 					stateChain.Add(sourceState);
