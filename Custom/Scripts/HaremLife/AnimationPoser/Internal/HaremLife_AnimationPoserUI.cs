@@ -1211,6 +1211,7 @@ namespace HaremLife
 			{
 				CreateMenuPopup(myTargetStateList, false);
 				CreateMenuButton("Add Transition", UIAddTransition, false);
+				CreateMenuButton("Add Indirect Transition", UIAddIndirectTransition, false);
 
 				if (transitions.Count > 0)
 					CreateMenuSpacer(15, false);
@@ -1239,9 +1240,10 @@ namespace HaremLife
 
 			State targetState;
 			targetLayer.myStates.TryGetValue(myTargetStateList.val, out targetState);
-			Transition transition = state.getIncomingTransition(targetState);
+			BaseTransition baseTransition = state.getIncomingTransition(targetState);
 
-			if(transition != null) {
+			if(baseTransition != null && baseTransition is Transition) {
+				Transition transition = baseTransition as Transition;
 				
 				mySyncRoleList = CreateDropDown(
 					CastDict(myRoles).ToDictionary(entry => (string)entry.Key, entry => (AnimationObject)entry.Value),
@@ -1283,7 +1285,7 @@ namespace HaremLife
 				JSONStorableFloat transitionProbability = new JSONStorableFloat("Relative Transition Probability", transition.myProbability, 0.00f, 1.0f, true, true);
 				transitionProbability.valNoCallback = transition.myProbability;
 				transitionProbability.setCallbackFunction = (float v) => {
-					Transition t = UIGetTransition();
+					Transition t = UIGetTransition() as Transition;
 					if (t != null)
 						t.myProbability = v;
 				};
@@ -1292,7 +1294,7 @@ namespace HaremLife
 				JSONStorableFloat transitionDuration = new JSONStorableFloat("Transition Duration", transition.myDuration, 0.01f, 20.0f, true, true);
 				transitionDuration.valNoCallback = transition.myDuration;
 				transitionDuration.setCallbackFunction = (float v) => {
-					Transition t = UIGetTransition();
+					Transition t = UIGetTransition() as Transition;
 					if (t != null)
 						t.myDuration = v;
 				};
@@ -1300,7 +1302,7 @@ namespace HaremLife
 
 				JSONStorableFloat transitionDurationNoise = new JSONStorableFloat("Transition Duration Noise", transition.myDurationNoise, 0.00f, 5.0f, true, true);
 				transitionDurationNoise.setCallbackFunction = (float v) => {
-					Transition t = UIGetTransition();
+					Transition t = UIGetTransition() as Transition;
 					if (t != null)
 						t.myDurationNoise = v;
 				};
@@ -1309,7 +1311,7 @@ namespace HaremLife
 				JSONStorableFloat easeInDuration = new JSONStorableFloat("EaseIn Duration", transition.myEaseInDuration, 0.0f, 5.0f, true, true);
 				easeInDuration.valNoCallback = transition.myEaseInDuration;
 				easeInDuration.setCallbackFunction = (float v) => {
-					Transition t = UIGetTransition();
+					Transition t = UIGetTransition() as Transition;
 					if (t != null)
 						t.myEaseInDuration = v;
 				};
@@ -1318,7 +1320,7 @@ namespace HaremLife
 				JSONStorableFloat easeOutDuration = new JSONStorableFloat("EaseOut Duration", transition.myEaseOutDuration, 0.0f, 5.0f, true, true);
 				easeOutDuration.valNoCallback = transition.myEaseOutDuration;
 				easeOutDuration.setCallbackFunction = (float v) => {
-					Transition t = UIGetTransition();
+					Transition t = UIGetTransition() as Transition;
 					if (t != null)
 						t.myEaseOutDuration = v;
 				};
@@ -1354,7 +1356,7 @@ namespace HaremLife
 
 				if(transition.mySyncTargets.ContainsKey(syncLayer)) {
 					CreateMenuLabelXButton(transition.mySyncTargets[syncLayer].myName, () => {
-						Transition t = UIGetTransition();
+						Transition t = UIGetTransition() as Transition;
 						if(t == null)
 							return;
 
@@ -1388,7 +1390,7 @@ namespace HaremLife
 
 					CreateMenuPopup(mySyncStateList, true);
 					CreateMenuButton("Sync State", () => {
-						Transition t = UIGetTransition();
+						Transition t = UIGetTransition() as Transition;
 						if(t == null)
 							return;
 
@@ -1407,6 +1409,19 @@ namespace HaremLife
 						UIRefreshMenu();
 					}, true);
 				}
+			} else if (baseTransition != null && baseTransition is IndirectTransition) {
+				IndirectTransition transition = baseTransition as IndirectTransition;
+				CreateMenuInfoOneLine("<size=30><b>Indirect Transition Settings</b></size>", true);
+				CreateMenuInfo("This is an indirect transition. Use this when you want to go straight to the target state through a chain of intermediate states, connected by regular transitions. The plugin's Path Finding algorithm will lead there.", 200, true);
+
+				JSONStorableFloat transitionProbability = new JSONStorableFloat("Relative Transition Probability", transition.myProbability, 0.00f, 1.0f, true, true);
+				transitionProbability.valNoCallback = transition.myProbability;
+				transitionProbability.setCallbackFunction = (float v) => {
+					IndirectTransition t = UIGetTransition() as IndirectTransition;
+					if (t != null)
+						t.myProbability = v;
+				};
+				CreateMenuSlider(transitionProbability, true);
 			}
 		}
 
@@ -1506,7 +1521,6 @@ namespace HaremLife
 
 		private void UIAddRole() {
 			String name = FindNewName("Role", "roles", myRoles.Keys.ToList());
-			SuperController.LogError("New Name: " + name);
 			Role role = new Role(name);
 			myRoles[name] = role;
 			myRoleList.val = name;
@@ -1707,7 +1721,6 @@ namespace HaremLife
 				if (selectedMessage != null) {
 					string qualStateName = $"{target.myLayer.myAnimation.myName}.{target.myLayer.myName}.{target.myName}";
 					if (selectedMessage.mySourceStates.Keys.ToList().Contains(qualStateName)) {
-						SuperController.LogError("Cannot add state to availableTargetStates: " + qualStateName);
 						continue;
 					}
 				}
@@ -2172,14 +2185,19 @@ namespace HaremLife
 				return;
 
 			State duplicate = new State(name, source);
-			duplicate.myTransitions = new List<Transition>(source.myTransitions);
+			duplicate.myTransitions = new List<BaseTransition>(source.myTransitions);
 			foreach (var s in myCurrentLayer.myStates)
 			{
 				State state = s.Value;
 				if (state != source && state.isReachable(source)) {
-					Transition transition = state.getIncomingTransition(source);
-					Transition duplicatedTransition = new Transition(transition);
-					state.myTransitions.Add(duplicatedTransition);
+					BaseTransition transition = state.getIncomingTransition(source);
+					if(transition is Transition) {
+						Transition duplicatedTransition = new Transition(transition as Transition);
+						state.myTransitions.Add(duplicatedTransition);
+					} else {
+						IndirectTransition duplicatedTransition = new IndirectTransition(transition as IndirectTransition);
+						state.myTransitions.Add(duplicatedTransition);
+					}
 				}
 			}
 			foreach (var entry in source.myControlEntries)
@@ -2485,6 +2503,33 @@ namespace HaremLife
 			UIRefreshMenu();
 		}
 
+		private void UIAddIndirectTransition()
+		{
+			State source = UIGetState();
+			if (source == null)
+				return;
+			Animation targetAnimation;
+			if (!myAnimations.TryGetValue(myTargetAnimationList.val, out targetAnimation))
+				return;
+			Layer targetLayer;
+			if(targetAnimation != myCurrentAnimation) {
+				if (!targetAnimation.myLayers.TryGetValue(myTargetLayerList.val, out targetLayer))
+					return;
+			} else {
+				targetLayer = myCurrentLayer;
+			}
+			State target;
+			if (!targetLayer.myStates.TryGetValue(myTargetStateList.val, out target))
+				return;
+
+			if (!source.isReachable(target)) {
+				IndirectTransition transition = new IndirectTransition(source, target);
+				source.myTransitions.Add(transition);
+			}
+
+			UIRefreshMenu();
+		}
+
 		private void UIAddSequentialTransitions()
 		{
 			if (myCurrentLayer == null || myCurrentLayer.myStates.Count == 0)
@@ -2587,7 +2632,7 @@ namespace HaremLife
 				return state;
 			}
 		}
-		private Transition UIGetTransition()
+		private BaseTransition UIGetTransition()
 		{
 			State sourceState;
 

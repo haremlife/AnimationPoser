@@ -111,18 +111,6 @@ namespace HaremLife
 			m["TargetLayer"] = messageToSave.myTargetState.myLayer.myName;
 			m["TargetAnimation"] = messageToSave.myTargetState.myAnimation().myName;
 
-			m["Duration"].AsFloat = messageToSave.myDuration;
-			m["DurationNoise"].AsFloat = messageToSave.myDurationNoise;
-			m["EaseInDuration"].AsFloat = messageToSave.myEaseInDuration;
-			m["EaseOutDuration"].AsFloat = messageToSave.myEaseOutDuration;
-			m["Probability"].AsFloat = messageToSave.myProbability;
-
-			JSONClass synct = new JSONClass();
-			foreach (var syncl in messageToSave.mySyncTargets) {
-				synct[syncl.Key.myName] = syncl.Value.myName;
-			}
-			m["SyncTargets"] = synct;
-
 			return m;
 		}
 
@@ -183,35 +171,52 @@ namespace HaremLife
 
 				JSONArray tlist = new JSONArray();
 				for (int i=0; i<state.myTransitions.Count; ++i) {
-					Transition transition = state.myTransitions[i];
 					JSONClass t = new JSONClass();
-					t["SourceState"] = transition.mySourceState.myName;
-					t["TargetState"] = transition.myTargetState.myName;
-					if(transition.myTargetState.myLayer == transition.mySourceState.myLayer)
-						t["TargetLayer"] = "[Self]";
-					else
-						t["TargetLayer"] = transition.myTargetState.myLayer.myName;
-					if(transition.myTargetState.myAnimation() == transition.mySourceState.myAnimation())
-						t["TargetAnimation"] = "[Self]";
-					else
-						t["TargetAnimation"] = transition.myTargetState.myAnimation().myName;
-					t["Duration"].AsFloat = transition.myDuration;
-					t["DurationNoise"].AsFloat = transition.myDurationNoise;
-					t["EaseInDuration"].AsFloat = transition.myEaseInDuration;
-					t["EaseOutDuration"].AsFloat = transition.myEaseOutDuration;
-					t["Probability"].AsFloat = transition.myProbability;
+					if(state.myTransitions[i] is Transition) {
+						Transition transition = state.myTransitions[i] as Transition;
+						t["Type"] = "Direct";
+						t["SourceState"] = transition.mySourceState.myName;
+						t["TargetState"] = transition.myTargetState.myName;
+						if(transition.myTargetState.myLayer == transition.mySourceState.myLayer)
+							t["TargetLayer"] = "[Self]";
+						else
+							t["TargetLayer"] = transition.myTargetState.myLayer.myName;
+						if(transition.myTargetState.myAnimation() == transition.mySourceState.myAnimation())
+							t["TargetAnimation"] = "[Self]";
+						else
+							t["TargetAnimation"] = transition.myTargetState.myAnimation().myName;
+						t["Duration"].AsFloat = transition.myDuration;
+						t["DurationNoise"].AsFloat = transition.myDurationNoise;
+						t["EaseInDuration"].AsFloat = transition.myEaseInDuration;
+						t["EaseOutDuration"].AsFloat = transition.myEaseOutDuration;
+						t["Probability"].AsFloat = transition.myProbability;
 
-					JSONClass synct = new JSONClass();
-					foreach (var syncl in transition.mySyncTargets) {
-						synct[syncl.Key.myName] = syncl.Value.myName;
-					}
-					t["SyncTargets"] = synct;
+						JSONClass synct = new JSONClass();
+						foreach (var syncl in transition.mySyncTargets) {
+							synct[syncl.Key.myName] = syncl.Value.myName;
+						}
+						t["SyncTargets"] = synct;
 
-					JSONClass msgs = new JSONClass();
-					foreach (var msg in transition.myMessages) {
-						msgs[msg.Key.myName] = msg.Value;
+						JSONClass msgs = new JSONClass();
+						foreach (var msg in transition.myMessages) {
+							msgs[msg.Key.myName] = msg.Value;
+						}
+						t["Messages"] = msgs;
+					} else {
+						IndirectTransition transition = state.myTransitions[i] as IndirectTransition;
+						t["Type"] = "Indirect";
+						t["SourceState"] = transition.mySourceState.myName;
+						t["TargetState"] = transition.myTargetState.myName;
+						if(transition.myTargetState.myLayer == transition.mySourceState.myLayer)
+							t["TargetLayer"] = "[Self]";
+						else
+							t["TargetLayer"] = transition.myTargetState.myLayer.myName;
+						if(transition.myTargetState.myAnimation() == transition.mySourceState.myAnimation())
+							t["TargetAnimation"] = "[Self]";
+						else
+							t["TargetAnimation"] = transition.myTargetState.myAnimation().myName;
+						t["Probability"].AsFloat = transition.myProbability;
 					}
-					t["Messages"] = msgs;
 
 					tlist.Add(t);
 				}
@@ -597,35 +602,42 @@ namespace HaremLife
 					if(!targetLayer.myStates.TryGetValue(tclass["TargetState"], out target))
 						continue;
 
-					Transition transition = new Transition(source, target);
-					transition.myProbability = tclass["Probability"].AsFloat;
-					transition.myDuration = tclass["Duration"].AsFloat;
-					transition.myDurationNoise = tclass["DurationNoise"].AsFloat;
-					transition.myEaseInDuration = tclass["EaseInDuration"].AsFloat;
-					transition.myEaseOutDuration = tclass["EaseOutDuration"].AsFloat;
-					transition.mySourceState = source;
-					transition.myTargetState = target;
+					if(String.Equals(tclass["Type"], "Direct") || tclass["Type"] == null) {
+						Transition transition = new Transition(source, target);
+						transition.myProbability = tclass["Probability"].AsFloat;
+						transition.myDuration = tclass["Duration"].AsFloat;
+						transition.myDurationNoise = tclass["DurationNoise"].AsFloat;
+						transition.myEaseInDuration = tclass["EaseInDuration"].AsFloat;
+						transition.myEaseOutDuration = tclass["EaseOutDuration"].AsFloat;
+						transition.mySourceState = source;
+						transition.myTargetState = target;
 
-					JSONClass synctlist = tclass["SyncTargets"].AsObject;
-					foreach (string key in synctlist.Keys) {
-						Layer syncLayer;
-						if (!targetAnimation.myLayers.TryGetValue(key, out syncLayer))
-							continue;
-						State syncState;
-						if (!syncLayer.myStates.TryGetValue(synctlist[key], out syncState))
-							continue;
-						transition.mySyncTargets[syncLayer] = syncState;
+						JSONClass synctlist = tclass["SyncTargets"].AsObject;
+						foreach (string key in synctlist.Keys) {
+							Layer syncLayer;
+							if (!targetAnimation.myLayers.TryGetValue(key, out syncLayer))
+								continue;
+							State syncState;
+							if (!syncLayer.myStates.TryGetValue(synctlist[key], out syncState))
+								continue;
+							transition.mySyncTargets[syncLayer] = syncState;
+						}
+
+						JSONClass msglist = tclass["Messages"].AsObject;
+						foreach (string key in msglist.Keys) {
+							Role role;
+							if (!myRoles.TryGetValue(key, out role))
+								continue;
+							transition.myMessages[role] = msglist[key];
+						}
+						source.myTransitions.Add(transition);
+					} else {
+						IndirectTransition transition = new IndirectTransition(source, target);
+						transition.myProbability = tclass["Probability"].AsFloat;
+						transition.mySourceState = source;
+						transition.myTargetState = target;
+						source.myTransitions.Add(transition);
 					}
-
-					JSONClass msglist = tclass["Messages"].AsObject;
-					foreach (string key in msglist.Keys) {
-						Role role;
-						if (!myRoles.TryGetValue(key, out role))
-							continue;
-						transition.myMessages[role] = msglist[key];
-					}
-
-					source.myTransitions.Add(transition);
 				}
 			}
 		}
@@ -670,11 +682,6 @@ namespace HaremLife
 
 				Message message = new Message(mclass["Name"]);
 				message.myMessageString = mclass["MessageString"];
-				message.myProbability = mclass["Probability"].AsFloat;
-				message.myDuration = mclass["Duration"].AsFloat;
-				message.myDurationNoise = mclass["DurationNoise"].AsFloat;
-				message.myEaseInDuration = mclass["EaseInDuration"].AsFloat;
-				message.myEaseOutDuration = mclass["EaseOutDuration"].AsFloat;
 
 				JSONArray srcstlist = mclass["SourceStates"].AsArray;
 				for (int j=0; j<srcstlist.Count; ++j)
@@ -688,17 +695,6 @@ namespace HaremLife
 				}
 
 				message.myTargetState = target;
-
-				JSONClass synctlist = mclass["SyncTargets"].AsObject;
-				foreach (string key in synctlist.Keys) {
-					Layer syncLayer;
-					if (!targetAnimation.myLayers.TryGetValue(key, out syncLayer))
-						continue;
-					State syncState;
-					if (!syncLayer.myStates.TryGetValue(synctlist[key], out syncState))
-						continue;
-					message.mySyncTargets[syncLayer] = syncState;
-				}
 
 				myMessages[message.myName] = message;
 			}

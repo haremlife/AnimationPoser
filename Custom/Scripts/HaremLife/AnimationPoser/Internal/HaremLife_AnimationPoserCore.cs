@@ -472,7 +472,11 @@ namespace HaremLife
 						State nextState = state.sortNextState();
 						if(nextState == null)
 							break;
-						myStateChain.Add(nextState);
+						List<State> path = state.findPath(nextState);
+						path.RemoveAt(0);
+						foreach(State s in path) {
+							myStateChain.Add(s);
+						}
 					}
 				}
 
@@ -494,7 +498,7 @@ namespace HaremLife
 				Transition transition;
 
 				if(sourceState.isReachable(targetState)) {
-					transition = sourceState.getIncomingTransition(targetState);
+					transition = sourceState.getIncomingTransition(targetState) as Transition;
 				} else {
 					transition = new Transition(sourceState, targetState);
 				}
@@ -512,6 +516,12 @@ namespace HaremLife
 						myMorphCaptures[i].SetTransition(stateChain);
 				}
 
+				foreach(var sc in transition.mySyncTargets) {
+					Layer syncLayer = sc.Key;
+					State syncState = sc.Value;
+					syncLayer.SetBlendTransition(syncState);
+				}
+
 				myStateChain.RemoveAt(0);
 
 				myTransition = transition;
@@ -522,12 +532,6 @@ namespace HaremLife
 					transition.myTargetState.EnterBeginTrigger.Trigger(myTriggerActionsNeedingUpdate);
 
 				myTransition.SendMessages();
-			}
-
-			public void ArriveFromAnotherAnimation(Transition transition, State targetState) {
-				targetState.myLayer.SetBlendTransition(targetState);
-
-				myMainAnimation.valNoCallback = myCurrentAnimation.myName;
 			}
 
 			private void TransitionToAnotherAnimation(Transition transition)
@@ -554,19 +558,36 @@ namespace HaremLife
 
 		private class BaseTransition
 		{
-			public Dictionary<Layer, State> mySyncTargets = new Dictionary<Layer, State>();
-			public Dictionary<Role, String> myMessages = new Dictionary<Role, String>();
+			public State mySourceState;
 			public State myTargetState;
 			public float myProbability;
-			public float myEaseInDuration;
-			public float myEaseOutDuration;
-			public float myDuration;
-			public float myDurationNoise = 0.0f;
+		}
+
+		private class IndirectTransition : BaseTransition
+		{
+			public IndirectTransition(State sourceState, State targetState)
+			{
+				mySourceState = sourceState;
+				myTargetState = targetState;
+				myProbability = targetState.myDefaultProbability;
+			}
+
+			public IndirectTransition(IndirectTransition t) {
+				mySourceState = t.mySourceState;
+				myTargetState = t.myTargetState;
+				myProbability = t.myProbability;
+			}
 		}
 
 		private class Transition : BaseTransition
 		{
-			public State mySourceState;
+			public float myEaseInDuration;
+			public float myEaseOutDuration;
+			public float myDuration;
+			public float myDurationNoise = 0.0f;
+			public Dictionary<Layer, State> mySyncTargets = new Dictionary<Layer, State>();
+			public Dictionary<Role, String> myMessages = new Dictionary<Role, String>();
+
 
 			public Transition(State sourceState, State targetState)
 			{
@@ -588,7 +609,8 @@ namespace HaremLife
 				myDuration = duration;
 			}
 
-			private void BuildFromBaseTransition(BaseTransition t) {
+			public Transition(Transition t) {
+				mySourceState = t.mySourceState;
 				myTargetState = t.myTargetState;
 				myProbability = t.myProbability;
 				myEaseInDuration = t.myEaseInDuration;
@@ -596,19 +618,7 @@ namespace HaremLife
 				myDuration = t.myDuration;
 				myDurationNoise = t.myDurationNoise;
 				mySyncTargets = t.mySyncTargets;
-			}
-
-			public Transition(Transition transition)
-			{
-				mySourceState = transition.mySourceState;
-				myMessages = transition.myMessages;
-				BuildFromBaseTransition(transition);
-			}
-
-			public Transition(State sourceState, Message message)
-			{
-				mySourceState = sourceState;
-				BuildFromBaseTransition(message);
+				myMessages = t.myMessages;
 			}
 
 			public void SendMessages() {
@@ -629,8 +639,9 @@ namespace HaremLife
 
 		}
 
-		private class Message : BaseTransition
+		private class Message
 		{
+			public State myTargetState;
 			public String myMessageString;
 			public String myName;
 			public Dictionary<string, State> mySourceStates = new Dictionary<string, State>();
@@ -653,7 +664,7 @@ namespace HaremLife
 			public uint myDebugIndex = 0;
 			public Dictionary<ControlCapture, ControlEntryAnchored> myControlEntries = new Dictionary<ControlCapture, ControlEntryAnchored>();
 			public Dictionary<MorphCapture, float> myMorphEntries = new Dictionary<MorphCapture, float>();
-			public List<Transition> myTransitions = new List<Transition>();
+			public List<BaseTransition> myTransitions = new List<BaseTransition>();
 			public EventTrigger EnterBeginTrigger;
 			public EventTrigger EnterEndTrigger;
 			public EventTrigger ExitBeginTrigger;
@@ -693,6 +704,16 @@ namespace HaremLife
 				return myLayer.myAnimation;
 			}
 
+			public List<State> getDirectlyReachableStates() {
+				List<State> states = new List<State>();
+				for(int i=0; i<myTransitions.Count; i++) {
+					if(myTransitions[i] is Transition) {
+						states.Add(myTransitions[i].myTargetState);
+					}
+				}
+				return states;
+			}
+
 			public List<State> getReachableStates() {
 				List<State> states = new List<State>();
 				for(int i=0; i<myTransitions.Count; i++)
@@ -718,7 +739,7 @@ namespace HaremLife
 					for(int i=0; i<keys.Count(); i++) {
 						State thisState = keys[i];
 
-						List<State> reachable = thisState.getReachableStates();
+						List<State> reachable = thisState.getDirectlyReachableStates();
 						for(int j=0; j<reachable.Count(); j++) {
 							State state = reachable[j];
 
@@ -772,7 +793,7 @@ namespace HaremLife
 
 			}
 
-			public Transition getIncomingTransition(State state) {
+			public BaseTransition getIncomingTransition(State state) {
 				for(int i=0; i<myTransitions.Count; i++)
 					if(myTransitions[i].myTargetState == state)
 						return myTransitions[i];
