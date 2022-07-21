@@ -193,6 +193,27 @@ namespace HaremLife
 			}
 		}
 
+		private static void SetAnimation(Animation animation, Transition transition)
+		{
+			myCurrentAnimation = animation;
+
+			List<string> layers = animation.myLayers.Keys.ToList();
+			layers.Sort();
+			if(layers.Count > 0) {
+				Layer layer;
+				foreach (var layerKey in layers) {
+					myCurrentAnimation.myLayers.TryGetValue(layerKey, out layer);
+					if (layer.myStates.ContainsKey(transition.myTargetState.myName))
+						SetLayer(layer, transition.myTargetState);
+					else if (transition.mySyncTargets.ContainsKey(layer))
+						SetLayer(layer, transition.mySyncTargets[layer]);
+					else
+						SetLayer(layer);
+				}
+			}
+			myMainAnimation.valNoCallback = myCurrentAnimation.myName;
+		}
+
 		private static void SetLayer(Layer layer)
 		{
 			myCurrentLayer = layer;
@@ -209,6 +230,13 @@ namespace HaremLife
 					layer.SetBlendTransition(state);
 				}
 			}
+		}
+
+		private static void SetLayer(Layer layer, State state)
+		{
+			myCurrentLayer = layer;
+			layer.myCurrentState = state;
+			layer.SetBlendTransition(state);
 		}
 
 		private void setCaptureDefaults(State state, State oldState)
@@ -323,7 +351,10 @@ namespace HaremLife
 				myCurrentState = state;
 
 				myClock = 0.0f;
-				myDuration = UnityEngine.Random.Range(state.myWaitDurationMin, state.myWaitDurationMax);
+				if(!myPaused)
+					myDuration = UnityEngine.Random.Range(state.myWaitDurationMin, state.myWaitDurationMax);
+				else
+					myDuration = 0.0f;
 
 				if (myMainLayer.val == myName) {
 					myMainState.valNoCallback = myCurrentState.myName;
@@ -394,8 +425,6 @@ namespace HaremLife
 					} else {
 						UpdateState();
 					}
-					// if (myTransition == null)
-						// UpdateState();
 				}
 			}
 
@@ -489,7 +518,8 @@ namespace HaremLife
 				}
 
 				if(transition.myTargetState.myAnimation() != transition.mySourceState.myAnimation()) {
-					TransitionToAnotherAnimation(transition);
+					SetAnimation(transition.myTargetState.myAnimation(), transition);
+					// TransitionToAnotherAnimation(transition);
 				} else {
 					List<State> stateChain = new List<State>(2);
 					stateChain.Add(sourceState);
