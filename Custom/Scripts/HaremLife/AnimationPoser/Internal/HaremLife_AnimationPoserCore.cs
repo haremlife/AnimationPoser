@@ -178,7 +178,7 @@ namespace HaremLife
 			return s;
 		}
 
-		private static void SetAnimation(Animation animation)
+		private static void SetAnimation(Animation animation, Transition transition = null)
 		{
 			myCurrentAnimation = animation;
 
@@ -188,50 +188,41 @@ namespace HaremLife
 				Layer layer;
 				foreach (var layerKey in layers) {
 					myCurrentAnimation.myLayers.TryGetValue(layerKey, out layer);
-					SetLayer(layer);
-				}
-			}
-		}
-
-		private static void SetAnimation(Animation animation, Transition transition)
-		{
-			myCurrentAnimation = animation;
-
-			List<string> layers = animation.myLayers.Keys.ToList();
-			layers.Sort();
-			if(layers.Count > 0) {
-				Layer layer;
-				foreach (var layerKey in layers) {
-					myCurrentAnimation.myLayers.TryGetValue(layerKey, out layer);
-					if (layer.myStates.ContainsKey(transition.myTargetState.myName))
-						SetLayer(layer, transition.myTargetState);
-					else if (transition.mySyncTargets.ContainsKey(layer))
-						SetLayer(layer, transition.mySyncTargets[layer]);
-					else
+					if (transition!=null) {
+						if (layer.myStates.ContainsKey(transition.myTargetState.myName))
+							SetLayer(layer, transition.myTargetState);
+						else if (transition.mySyncTargets.ContainsKey(layer))
+							SetLayer(layer, transition.mySyncTargets[layer]);
+					} else {
 						SetLayer(layer);
+					}
 				}
 			}
 			myMainAnimation.valNoCallback = myCurrentAnimation.myName;
 		}
 
-		private static void SetLayer(Layer layer)
+		private static void SetLayer(Layer layer, State targetState = null)
 		{
 			myCurrentLayer = layer;
-			List<string> states = layer.myStates.Keys.ToList();
-			states.Sort();
-			if(layer.myStates.Count > 0) {
-				State state;
-				layer.myStates.TryGetValue(states[0], out state);
-				layer.myCurrentState = state;
-				layer.SetBlendTransition(state);
+			State state = null;
+			if(targetState != null) {
+				layer.myCurrentState = targetState;
+				state = targetState;
 			}
-		}
-
-		private static void SetLayer(Layer layer, State state)
-		{
-			myCurrentLayer = layer;
+			else if(layer.myCurrentState == null) {
+				List<string> states = layer.myStates.Keys.ToList();
+				states.Sort();
+				if(layer.myStates.Count > 0) {
+					layer.myStates.TryGetValue(states[0], out state);
+				}
+			}
+			else if(layer.myCurrentState != null) {
+				myMainState.val = layer.myCurrentState.myName;
+				return;
+			}
 			layer.myCurrentState = state;
 			layer.SetBlendTransition(state);
+			return;
 		}
 
 		private void setCaptureDefaults(State state, State oldState)
@@ -509,8 +500,7 @@ namespace HaremLife
 				}
 
 				if(transition.myTargetState.myAnimation() != transition.mySourceState.myAnimation()) {
-					SetAnimation(transition.myTargetState.myAnimation(), transition);
-					// TransitionToAnotherAnimation(transition);
+					TransitionToAnotherAnimation(transition);
 				} else {
 					List<State> stateChain = new List<State>(2);
 					stateChain.Add(sourceState);
@@ -546,12 +536,14 @@ namespace HaremLife
 				Animation animation = targetState.myAnimation();
 				Layer targetLayer = targetState.myLayer;
 				SetAnimation(animation, transition);
+				targetState.myLayer.SetBlendTransition(targetState);
 
 				// myMainAnimation.valNoCallback = myCurrentAnimation.myName;
 				// myMainLayer.valNoCallback = myCurrentLayer.myName;
 				// myMainState.valNoCallback = myCurrentState.myName;
 			}
 		}
+
 		private class Role : AnimationObject
 		{
 			public Atom myPerson;
