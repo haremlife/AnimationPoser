@@ -518,6 +518,21 @@ namespace HaremLife
 				myClock = myDuration;
 			}
 
+			public void BlendFromAnimation(State fromState = null) {
+				State blendState = CreateBlendState();
+				if (fromState != null)
+					blendState.AssignOutTriggers(fromState);
+				CaptureState(blendState);
+				myCurrentState = blendState;
+				myDuration = blendState.myWaitDurationMin;
+
+				if (fromState != null)
+					myStateChain = new List<State>(fromState.myLayer.myStateChain);
+				else
+					myStateChain = new List<State>(myStateChain);
+				myStateChain.Insert(0, blendState);
+			}
+
 			public void SetTransition()
 			{
 				myClock = 0.0f;
@@ -541,20 +556,16 @@ namespace HaremLife
 
 					foreach(var l in animation.myLayers) {
 						Layer layer = l.Value;
-						if(layer == targetLayer)
+						if(layer == targetLayer || transition.mySyncTargets.Keys.Contains(layer))
 							continue;
 						layer.GoToAnyState();
 					}
 
-					State blendState = targetLayer.CreateBlendState();
-					targetLayer.CaptureState(blendState);
-					blendState.AssignOutTriggers(myCurrentState);
-					targetLayer.myCurrentState = blendState;
-					targetLayer.myDuration = blendState.myWaitDurationMin;
+					foreach(var sc in transition.mySyncTargets) {
+						sc.Key.BlendFromAnimation();
+					}
 
-					sourceState = blendState;
-					targetLayer.myStateChain = new List<State>(myStateChain);
-					targetLayer.myStateChain.Insert(0, sourceState);
+					targetLayer.BlendFromAnimation(myCurrentState);
 
 					SetAnimation(animation);
 
