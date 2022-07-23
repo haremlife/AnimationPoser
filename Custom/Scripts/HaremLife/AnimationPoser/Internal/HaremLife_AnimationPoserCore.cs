@@ -549,6 +549,8 @@ namespace HaremLife
 					State blendState = targetLayer.CreateBlendState();
 					targetLayer.CaptureState(blendState);
 					blendState.AssignOutTriggers(myCurrentState);
+					targetLayer.myCurrentState = blendState;
+					targetLayer.myDuration = blendState.myWaitDurationMin;
 
 					sourceState = blendState;
 					targetLayer.myStateChain = new List<State>(myStateChain);
