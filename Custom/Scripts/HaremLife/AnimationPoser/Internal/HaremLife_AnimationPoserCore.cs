@@ -557,6 +557,9 @@ namespace HaremLife
 					targetLayer.myStateChain.Insert(0, sourceState);
 
 					SetAnimation(animation);
+
+					transition.SendMessages();
+					transition.SendAvoids();
 				} else {
 					List<State> stateChain = new List<State>(2);
 					stateChain.Add(sourceState);
